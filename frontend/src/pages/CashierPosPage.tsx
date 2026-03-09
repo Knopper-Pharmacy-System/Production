@@ -6,7 +6,6 @@ import {
   LogOut,
   Plus,
   Receipt as ReceiptIcon,
-  ShoppingCart,
   Trash2,
   User,
   Wifi,
@@ -42,7 +41,6 @@ function CashierPosPage() {
   const [addOn, setAddOn] = useState(0);
   const [terminalId] = useState("001");
   const [invoiceNo] = useState("000000001");
-  const [transNo] = useState("000000001");
   const [cashierName] = useState("Gino L.");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 

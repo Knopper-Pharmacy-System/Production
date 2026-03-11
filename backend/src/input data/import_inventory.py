@@ -1,4 +1,4 @@
-import pandas as pd
+import csv
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime
@@ -25,18 +25,18 @@ TARGET_BRANCH_ID = 1
 # 2. CLEANING FUNCTIONS
 # ==========================================
 def clean_str(val):
-    if pd.isna(val) or val == '' or str(val).lower() == 'nan': return None
+    if not val or str(val).lower() == 'nan': return None
     return str(val).strip()
 
 def clean_float(val):
-    if pd.isna(val) or val == '': return 0.0
+    if not val: return 0.0
     try:
         return float(str(val).replace(',', '').replace('$', '').strip())
     except:
         return 0.0
 
 def clean_date(val):
-    if pd.isna(val) or val == '': return None
+    if not val: return None
     s = str(val).strip()
     # Try multiple formats
     for fmt in ['%m/%d/%Y', '%Y-%m-%d', '%d-%m-%Y', '%m-%d-%y']:
@@ -97,13 +97,14 @@ def run_import():
         conn.commit()
 
         print(f"Reading CSV: {CSV_FILE}...")
-        # Read as Object to prevent pandas guessing wrong types
-        df = pd.read_csv(CSV_FILE, dtype=object)
+        with open(CSV_FILE, 'r') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
         
-        print(f"Total Rows to Process: {len(df)}")
+        print(f"Total Rows to Process: {len(rows)}")
         print("---------------------------------------------------")
 
-        for index, row in df.iterrows():
+        for index, row in enumerate(rows):
             try:
                 # --- A. CLEANING ---
                 p_id_raw = row.get('Id', '0')

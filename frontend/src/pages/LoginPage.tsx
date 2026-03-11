@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ChevronDown, LoaderCircle, LogIn, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, ChevronDown, LoaderCircle, LogIn, AlertCircle, X } from "lucide-react";
 import bannerLogo from "../assets/banner_logo.png";
 import logoOutline from "../assets/logo_outline.png";
 import { login } from "../api/auth.js";
@@ -10,15 +10,16 @@ import { getStoredRole, isAuthenticated, useAuth } from "../hooks/useAuth";
 type AllowedRole = "admin" | "cashier" | "staff" | "omvb_manager";
 
 type FieldErrors = {
-  username: string;
-  password: string;
+  branch: boolean;
+  username: boolean;
+  password: boolean;
 };
 
 const BRANCHES = [
   {
     value: "BMC MAIN",
     label: "BMC MAIN",
-    address: "#6A J. Miranda Ave., Concepcion Pequena, Naga City",
+    address: "#6A J. Miranda Ave., Concepcion Pequeña, Naga City",
   },
   {
     value: "DIVERSION BRANCH",
@@ -28,7 +29,7 @@ const BRANCHES = [
   {
     value: "PANGANIBAN BRANCH",
     label: "PANGANIBAN BRANCH",
-    address: "Door 11 & 12, Pavilion 7, Panganiban Drive Concepcion Pequena, Naga City",
+    address: "Door 11 & 12, Pavilion 7, Panganiban Drive Concepcion Pequeña, Naga City",
   },
 ];
 
@@ -64,7 +65,9 @@ function LoginPage() {
   const [branch, setBranch] = useState(() => localStorage.getItem("lastBranch") || "");
   const [currentDateTime, setCurrentDateTime] = useState({ date: "", time: "" });
   const [credentials, setCredentials] = useState({ username: "", password: "" });
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({ username: "", password: "" });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({ branch: false, username: false, password: false });
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -73,6 +76,21 @@ function LoginPage() {
   const formRef = useRef<HTMLFormElement | null>(null);
 
   const selectedBranch = BRANCHES.find((item) => item.value === branch);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(message);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -124,20 +142,10 @@ function LoginPage() {
       setCredentials((prev) => ({ ...prev, [name]: value }));
       const key = name as keyof FieldErrors;
       if (fieldErrors[key]) {
-        setFieldErrors((prev) => ({ ...prev, [key]: "" }));
+        setFieldErrors((prev) => ({ ...prev, [key]: false }));
       }
     },
     [fieldErrors],
-  );
-
-  const handleUsernameChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      setCredentials((prev) => ({ ...prev, username: event.target.value }));
-      if (fieldErrors.username) {
-        setFieldErrors((prev) => ({ ...prev, username: "" }));
-      }
-    },
-    [fieldErrors.username],
   );
 
   const handleKeyDown = useCallback(
@@ -156,61 +164,69 @@ function LoginPage() {
   const validateForm = useCallback(() => {
     const trimmedUsername = credentials.username.trim();
     const trimmedPassword = credentials.password.trim();
-    const errors: FieldErrors = { username: "", password: "" };
-
-    if (!trimmedUsername) {
-      errors.username = "Please enter your username";
-    }
-
-    if (!trimmedPassword) {
-      errors.password = "Please enter your password";
-    }
+    const errors: FieldErrors = { branch: !branch, username: !trimmedUsername, password: !trimmedPassword };
 
     setFieldErrors(errors);
-    return !errors.username && !errors.password;
-  }, [credentials]);
+    return !errors.branch && !errors.username && !errors.password;
+  }, [credentials, branch]);
 
   const handleLogin = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setFieldErrors({ username: "", password: "" });
+    setFieldErrors({ branch: false, username: false, password: false });
 
     if (!validateForm()) {
-      if (!credentials.username.trim()) {
-        usernameRef.current?.focus();
-      } else {
-        passwordRef.current?.focus();
-      }
+      const missing = [];
+      if (!branch) missing.push("Branch");
+      if (!credentials.username.trim()) missing.push("User ID");
+      if (!credentials.password.trim()) missing.push("Password");
+      showToast(`Required field${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`);
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const response = await login({
+      console.log("[LOGIN] Attempting with username:", credentials.username.trim());
+
+      const data = await login({
         username: credentials.username.trim(),
         password: credentials.password.trim(),
       });
 
-      authLogin(response.access_token, response.role);
+      console.log("[LOGIN] Success - received:", { role: data.role });
 
-      const destination = roleHomePath(response.role);
+      // Save token and role
+      authLogin(data.access_token, data.role);
+
+      const destination = roleHomePath(data.role);
       if (destination === "/") {
-        setFieldErrors({ username: "", password: `Unsupported role: ${response.role}` });
+        showToast(`Unsupported role: ${data.role || "unknown"}`);
         return;
       }
 
+      showToast("Login successful!");
       navigate(destination, { replace: true });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Authentication failed. Please try again.";
-      setFieldErrors({ username: "", password: errorMessage });
+    } catch (err: any) {
+      console.error("[LOGIN] Failed:", err);
+
+      let message = "Authentication failed. Please try again.";
+      if (err.message.includes("401") || err.message.includes("Invalid")) {
+        message = "Invalid username or password";
+      } else if (err.message.includes("fetch") || err.message.includes("network")) {
+        message = "Cannot reach server. Is the backend running?";
+      } else if (err.message) {
+        message = err.message;
+      }
+
+      showToast(message);
     } finally {
       setIsLoading(false);
     }
-  }, [authLogin, credentials, navigate, validateForm]);
+  }, [authLogin, credentials, navigate, validateForm, branch, showToast]);
 
-  const getInputClasses = (errorMsg: string) =>
+  const getInputClasses = (error: boolean) =>
     `flex items-center bg-[#edeaea] border-2 ${
-      errorMsg ? "border-red-500" : "border-transparent"
+      error ? "border-red-500 ring-2 ring-red-400" : "border-transparent"
     } rounded-xl sm:rounded-2xl shadow-[0_0_20px_2px_rgba(0,0,0,0.25)] h-16 sm:h-20 px-4 sm:px-6 gap-3 flex-1 min-w-0 transition-all duration-200`;
 
   return (
@@ -218,6 +234,30 @@ function LoginPage() {
       className="bg-gradient-to-b from-[#062d8c] from-[59%] to-[#3266e6] min-h-screen w-full flex flex-col overflow-x-hidden"
       data-name="newest login"
     >
+      <style>{`
+        @keyframes toastSlideIn {
+          from { transform: translateY(-16px); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        .toast-enter { animation: toastSlideIn 0.3s cubic-bezier(0.16,1,0.3,1) forwards; }
+      `}</style>
+
+      {/* ── Modern Toast ── */}
+      {toast && (
+        <div className="toast-enter fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-start gap-3 bg-[#07184a]/90 backdrop-blur-xl border border-red-400/40 rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.5)] px-5 py-4 min-w-72 max-w-sm">
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          <p className="text-white/90 text-sm font-medium flex-1 leading-snug">
+            {toast}
+          </p>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="shrink-0 text-white/40 hover:text-white/90 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <header className="flex items-center justify-between px-4 sm:px-6 lg:px-12 pt-10 sm:pt-14 pb-4 shrink-0">
         <div className="h-10 sm:h-12 lg:h-16 w-auto">
           <img alt="Banner Logo" className="h-full w-auto object-contain pointer-events-none" src={bannerLogo} />
@@ -261,18 +301,21 @@ function LoginPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 items-start sm:items-center gap-4 sm:gap-6">
               <div className="flex flex-col gap-2 sm:col-span-1">
                 <p className="font-semibold text-xl sm:text-2xl text-white">BRANCH:</p>
-                <div className="relative bg-[#f4f4f4] flex items-center gap-2 h-12 sm:h-14 px-4 rounded-2xl shadow-[0_0_40px_rgba(3,31,99,0.25)] cursor-pointer w-full max-w-sm">
+                <div className={`relative bg-[#f4f4f4] flex items-center gap-2 h-12 sm:h-14 px-4 rounded-2xl shadow-[0_0_40px_rgba(3,31,99,0.25)] cursor-pointer w-full max-w-sm transition-shadow ${fieldErrors.branch ? "ring-2 ring-red-400" : ""}`}>
                   <p
                     className={`font-semibold text-base sm:text-lg truncate flex-1 text-center ${
-                      branch ? "text-[#103182]" : "text-gray-500"
+                      branch ? "text-[#103182]" : fieldErrors.branch ? "text-red-400" : "text-gray-500"
                     }`}
                   >
                     {selectedBranch?.label ?? "Select Branch"}
                   </p>
-                  <ChevronDown className="text-[#103182] w-5 h-5 shrink-0" />
+                  <ChevronDown className={`text-[#103182] w-5 h-5 shrink-0 ${fieldErrors.branch ? "text-red-400" : ""}`} />
                   <select
                     value={branch}
-                    onChange={(event) => setBranch(event.target.value)}
+                    onChange={(event) => {
+                      setBranch(event.target.value);
+                      setFieldErrors((prev) => ({ ...prev, branch: false }));
+                    }}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   >
                     <option value="" disabled>
@@ -289,7 +332,7 @@ function LoginPage() {
 
               <div className="sm:col-span-2 flex flex-col gap-1 items-center sm:items-start text-center sm:text-left">
                 <p className="font-semibold text-[#b9e0ff] text-2xl sm:text-3xl lg:text-5xl leading-tight">
-                  {selectedBranch?.label || "-"}
+                  {selectedBranch?.label || "NO BRANCH SELECTED"}
                 </p>
                 <p className="text-[#b9e0ff] text-sm sm:text-base opacity-80 max-w-prose">
                   {selectedBranch?.address || "Select a branch to continue"}
@@ -329,7 +372,7 @@ function LoginPage() {
                     type="text"
                     name="username"
                     value={credentials.username}
-                    onChange={handleUsernameChange}
+                    onChange={handleChange}
                     onKeyDown={(event) => handleKeyDown(event, passwordRef)}
                     className="flex-1 min-w-0 font-normal text-[#101010] text-base sm:text-lg lg:text-xl bg-transparent border-none outline-none placeholder:text-gray-500"
                     placeholder=""
@@ -337,15 +380,6 @@ function LoginPage() {
                     autoFocus
                   />
                 </div>
-                {fieldErrors.username && (
-                  <div className="absolute -top-10 left-0 right-0 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
-                    <div className="bg-red-500 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 whitespace-nowrap">
-                      <AlertCircle className="w-4 h-4" />
-                      {fieldErrors.username}
-                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rotate-45" />
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="flex-1 min-w-0 relative">
@@ -373,15 +407,6 @@ function LoginPage() {
                     {showPassword ? <EyeOff size={22} /> : <Eye size={22} />}
                   </button>
                 </div>
-                {fieldErrors.password && (
-                  <div className="absolute -top-10 left-0 right-0 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
-                    <div className="bg-red-500 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 whitespace-nowrap">
-                      <AlertCircle className="w-4 h-4" />
-                      {fieldErrors.password}
-                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-red-500 rotate-45" />
-                    </div>
-                  </div>
-                )}
               </div>
 
               <button

@@ -271,22 +271,35 @@ def get_all_products():
 def get_branch_inventory(branch_id):
     cur = mysql.connection.cursor()
     try:
+        limit = int(request.args.get('limit', 100))  # Default 100 items
+        offset = int(request.args.get('offset', 0))
+        category = request.args.get('category', '')
+
         sql = """
             SELECT 
                 bi.inventory_id,
                 p.product_id,
                 p.product_name_official,
+                p.product_name_receipt,
                 p.category_type,
                 bi.batch_number,
                 bi.expiry_date,
                 bi.quantity_on_hand,
-                p.price_regular
+                p.price_regular,
+                g.gondola_code
             FROM BRANCH_INVENTORY bi
             JOIN PRODUCTS p ON bi.product_id = p.product_id
+            JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
             WHERE bi.branch_id = %s
-            ORDER BY p.product_name_official ASC, bi.expiry_date ASC
         """
-        cur.execute(sql, (branch_id,))
+        params = [branch_id]
+        if category:
+            sql += " AND p.category_type = %s"
+            params.append(category)
+        sql += " ORDER BY p.product_name_official ASC, bi.expiry_date ASC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+
+        cur.execute(sql, params)
         inventory_items = cur.fetchall()
 
         inventory_list = []
@@ -294,13 +307,15 @@ def get_branch_inventory(branch_id):
             inventory_list.append({
                 "inventory_id": item[0],
                 "product_id": item[1],
-                "product_name": item[2],
-                "category": item[3],
-                "batch_number": item[4],
+                "product_name": item[3] if item[3] else item[2],  # receipt name, fallback to official
+                "product_name_official": item[2],
+                "category": item[4],
+                "batch_number": item[5],
                 # Dates need to be converted to strings for JSON formatting
-                "expiry_date": item[5].strftime('%Y-%m-%d') if item[5] else None,
-                "quantity_on_hand": item[6],
-                "price": float(item[7]) if item[7] else 0.00
+                "expiry_date": item[6].strftime('%Y-%m-%d') if item[6] else None,
+                "quantity_on_hand": item[7],
+                "price": float(item[8]) if item[8] else 0.00,
+                "gondola_code": item[9]
             })
 
         return jsonify(inventory_list), 200
@@ -898,18 +913,21 @@ def search_product():
     
     # Get the search term from the URL parameter (e.g., /search?name=paracetamol)
     search_query = request.args.get('name', '')
+    category = request.args.get('category', '')
 
     if not search_query:
         return jsonify({"message": "Please provide a product name to search for."}), 400
 
     cur = mysql.connection.cursor()
     try:
+        like_pattern = f"%{search_query}%"
     
         sql = """
             SELECT 
                 bi.inventory_id,
                 p.product_id,
                 p.product_name_official, 
+                p.product_name_receipt,
                 bi.batch_number, 
                 bi.expiry_date, 
                 bi.quantity_on_hand, 
@@ -919,11 +937,15 @@ def search_product():
             JOIN PRODUCTS p ON bi.product_id = p.product_id
             JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
             WHERE bi.branch_id = %s 
-              AND (p.product_name_official LIKE %s OR bi.batch_number LIKE %s)
-            ORDER BY p.product_name_official ASC, bi.expiry_date ASC
+              AND (p.product_name_official LIKE %s OR p.product_name_receipt LIKE %s OR bi.batch_number LIKE %s)
         """
-        like_pattern = f"%{search_query}%"
-        cur.execute(sql, (current_branch_id, like_pattern, like_pattern))
+        params = [current_branch_id, like_pattern, like_pattern, like_pattern]
+        if category:
+            sql += " AND p.category_type = %s"
+            params.append(category)
+        sql += " ORDER BY p.product_name_official ASC, bi.expiry_date ASC"
+
+        cur.execute(sql, params)
         results = cur.fetchall()
 
         if not results:
@@ -935,12 +957,13 @@ def search_product():
             search_results.append({
                 "inventory_id": row[0],
                 "product_id": row[1],
-                "product_name": row[2],
-                "batch_number": row[3],
-                "expiry_date": row[4].strftime('%Y-%m-%d') if row[4] else None,
-                "quantity_on_hand": row[5],
-                "price": float(row[6]) if row[6] else 0.00,
-                "gondola_code": row[7]
+                "product_name": row[3] if row[3] else row[2],  # receipt name, fallback to official
+                "product_name_official": row[2],
+                "batch_number": row[4],
+                "expiry_date": row[5].strftime('%Y-%m-%d') if row[5] else None,
+                "quantity_on_hand": row[6],
+                "price": float(row[7]) if row[7] else 0.00,
+                "gondola_code": row[8]
             })
 
         return jsonify({

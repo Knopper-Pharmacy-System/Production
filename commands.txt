@@ -1,6 +1,6 @@
 Local Development Commands
 1. Start the Backend (Flask API)
-/
+
     cd backend
     source venv/bin/activate  # Activate virtual environment
     python app.py            # Runs on http://localhost:5000

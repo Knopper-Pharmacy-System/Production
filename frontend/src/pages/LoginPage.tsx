@@ -197,6 +197,7 @@ function LoginPage() {
 
       // Save token and role
       authLogin(data.access_token, data.role);
+      localStorage.setItem("cashier_username", credentials.username.trim());
 
       const destination = roleHomePath(data.role);
       if (destination === "/") {

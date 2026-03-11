@@ -8,13 +8,28 @@ export interface Sale {
   timestamp: number;
 }
 
+export interface InventoryItem {
+  id?: number;
+  name: string;
+  productId?: number;
+  batch?: string;
+  expiry?: string | null;
+  quantity: number;
+  price: number;
+  gondola?: string;
+  sync_status?: string;
+  timestamp?: number;
+}
+
 export class MyDatabase extends Dexie {
-  sales!: Table<Sale>; 
+  sales!: Table<Sale>;
+  inventory!: Table<InventoryItem>;
 
   constructor() {
     super('KnopperDB');
     this.version(1).stores({
-      sales: '++id, timestamp' // Primary key and indexed fields
+      sales: '++id, timestamp',
+      inventory: '++id, name, batch, gondola, sync_status'
     });
   }
 }

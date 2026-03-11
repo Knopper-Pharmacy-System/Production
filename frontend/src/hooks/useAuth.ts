@@ -1,3 +1,4 @@
+// src/hooks/useAuth.ts
 const TOKEN_KEY = "access_token";
 const ROLE_KEY = "user_role";
 

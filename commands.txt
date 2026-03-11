@@ -1,0 +1,4 @@
+Start the backend (if online): cd backend && python3 app.py
+Serve the built app: cd frontend && npx serve dist (install serve if needed: npm i -g serve)
+Go online first: Load the app, log in, open inventory to sync data.
+Go offline: Disconnect internet, refresh the page—the app and inventory should still load!

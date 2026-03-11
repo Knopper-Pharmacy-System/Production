@@ -3,25 +3,24 @@ from flask import Flask, request, jsonify
 from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
-from flask_cors import CORS
-from datetime import datetime, timedelta
+from datetime import timedelta
+from flask_cors import CORS   # ← NEW IMPORT
+
+# --- NEW: Load the .env file ---
 from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
 
-CORS(
-    app,
-    resources={r"/*": {"origins": "*"}},
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
+# Enable CORS – allow requests from React dev server (Vite usually port 5173)
+CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://localhost:3000", "*"]}})
 
+# --- Configuration (Now Secure!) ---
 app.config['MYSQL_HOST'] = os.getenv('DB_HOST')
 app.config['MYSQL_USER'] = os.getenv('DB_USER')
 app.config['MYSQL_PASSWORD'] = os.getenv('DB_PASSWORD') 
 app.config['MYSQL_DB'] = os.getenv('DB_NAME')
-app.config['MYSQL_PORT'] = int(os.getenv('DB_PORT')) 
+app.config['MYSQL_PORT'] = int(os.getenv('DB_PORT')) # Ports must be integers
 
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET') 
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=12)
@@ -30,10 +29,352 @@ mysql = MySQL(app)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
-# ROUTE: CREATE USER 
-@app.route('/create-user', methods=['POST'])
+# ==========================================
+# ROUTE: CREATE USER (RBAC Enabled)
+# ==========================================
+@app.route('/users', methods=['POST'])
 @jwt_required()
 def create_user():
+    # --- FIX START ---
+    # We use get_jwt() to access the custom claims (role/branch) we set in login
+    claims = get_jwt()
+    current_role = claims['role']
+    # --- FIX END ---
+
+    # ROLE LOGIC: 
+    data = request.json
+    target_role = data.get('role')
+    
+    if current_role == 'staff':
+        return jsonify({"message": "Access Denied: Staff cannot create accounts"}), 403
+    
+    if current_role == 'manager' and target_role in ['admin', 'manager']:
+        return jsonify({"message": "Access Denied: Managers can only create Staff accounts"}), 403
+
+    # Extract Data
+    u_id = data.get('user_id')
+    b_id = data.get('branch_id')
+    uname = data.get('username')
+    fname = data.get('full_name')
+    pwd = data.get('password')
+
+    hashed_pwd = bcrypt.generate_password_hash(pwd).decode('utf-8')
+
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO USERS (user_id, branch_id, username, password_hash, full_name, role)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (u_id, b_id, uname, hashed_pwd, fname, target_role))
+        mysql.connection.commit()
+        return jsonify({"message": f"User {uname} created successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+# ==========================================
+# ROUTE: LOGIN (FIXED)
+# ==========================================
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT user_id, password_hash, role, branch_id FROM USERS WHERE username = %s", (username,))
+    user = cur.fetchone()
+    cur.close()
+
+    if user and bcrypt.check_password_hash(user[1], password):
+        # --- FIX START ---
+        # 1. Identity MUST be a string (User ID)
+        identity = str(user[0]) 
+        
+        # 2. Store Role and Branch in 'additional_claims'
+        claims = {
+            "role": user[2],
+            "branch": user[3]
+        }
+        
+        # Create the token correctly
+        token = create_access_token(identity=identity, additional_claims=claims)
+        # --- FIX END ---
+        
+        return jsonify({"access_token": token, "role": user[2]}), 200
+    
+    return jsonify({"message": "Invalid Credentials"}), 401
+
+# ==========================================
+# ROUTE: SETUP ADMIN (Protected by Header Key)
+# ==========================================
+@app.route('/setup-admin', methods=['POST'])
+def setup_admin():
+    # 1. SECURITY CHECK: Check for the secret header
+    setup_key = request.headers.get('X-Setup-Key')
+    
+    if setup_key != "Knopper-Init-2026":
+        return jsonify({"message": "Forbidden: Invalid Setup Key"}), 403
+
+    # 2. CREATE ADMIN LOGIC
+    data = request.json
+    
+    if not data or not data.get('password'):
+        return jsonify({"message": "Missing password"}), 400
+
+    hashed_pwd = bcrypt.generate_password_hash(data.get('password')).decode('utf-8')
+    
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO USERS (user_id, branch_id, username, password_hash, full_name, role)
+            VALUES (%s, %s, %s, %s, %s, 'admin')
+        """, (data.get('user_id'), data.get('branch_id'), data.get('username'), hashed_pwd, data.get('full_name')))
+        
+        mysql.connection.commit()
+        return jsonify({"message": "Superadmin created successfully!"}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+@app.route('/users', methods=['GET'])
+@jwt_required()
+def get_all_users():
+    # Optional: Check if the requester is an Admin/Manager if you want to restrict this
+    # claims = get_jwt()
+    # if claims['role'] not in ['admin', 'manager']:
+    #     return jsonify({"message": "Access Denied"}), 403
+
+    cur = mysql.connection.cursor()
+    try:
+        # We join with BRANCHES so we see "BMC Main" instead of just "1"
+        sql = """
+            SELECT u.user_id, u.username, u.full_name, u.role, b.branch_name, u.is_active 
+            FROM USERS u
+            LEFT JOIN BRANCHES b ON u.branch_id = b.branch_id
+            ORDER BY u.branch_id, u.role
+        """
+        cur.execute(sql)
+        users = cur.fetchall()
+
+        # Convert the list of tuples into a clean JSON list
+        user_list = []
+        for user in users:
+            user_list.append({
+                "user_id": user[0],
+                "username": user[1],
+                "full_name": user[2],
+                "role": user[3],
+                "branch": user[4],
+                "status": "Active" if user[5] else "Inactive"
+            })
+
+        return jsonify(user_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+# update user pass
+
+@app.route('/update-password', methods=['PUT'])
+@jwt_required()
+def update_password():
+    # 1. Get the Identity of the person currently logged in
+    current_user_id = str(get_jwt_identity()) # The ID in the token
+    claims = get_jwt()
+    current_role = claims['role']             # The Role in the token
+
+    # 2. Get Data from Postman
+    data = request.json
+    target_user_id = str(data.get('user_id')) # Who are we changing?
+    new_password = data.get('new_password')
+    old_password = data.get('old_password')   # Required if changing your own
+
+    if not new_password or not target_user_id:
+        return jsonify({"message": "Missing user_id or new_password"}), 400
+
+    # 3. SECURITY CHECK (The "Restriction")
+    # Rule: If you are NOT an admin, you can ONLY change your own ID.
+    if current_role != 'admin' and current_user_id != target_user_id:
+        return jsonify({"message": "Access Denied: You can only change your own password."}), 403
+
+    cur = mysql.connection.cursor()
+
+    try:
+        # 4. SCENARIO A: Changing OWN password (Requires Old Password check)
+        if current_user_id == target_user_id:
+            if not old_password:
+                return jsonify({"message": "Please provide your old password"}), 400
+            
+            # Verify the old password matches the DB
+            cur.execute("SELECT password_hash FROM USERS WHERE user_id = %s", (current_user_id,))
+            user = cur.fetchone()
+            if not user or not bcrypt.check_password_hash(user[0], old_password):
+                return jsonify({"message": "Incorrect old password"}), 401
+
+        # 5. EXECUTE UPDATE (Hash the new password)
+        hashed_pw = bcrypt.generate_password_hash(new_password).decode('utf-8')
+        
+        cur.execute("UPDATE USERS SET password_hash = %s WHERE user_id = %s", (hashed_pw, target_user_id))
+        mysql.connection.commit()
+        
+        return jsonify({"message": "Password updated successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+#---------------PRODUCTS---------------------------------------------------------
+
+@app.route('/products', methods=['GET'])
+@jwt_required()
+def get_all_products():
+    cur = mysql.connection.cursor()
+    try:
+        # NOTE: Adjust these column names if your table schema is different.
+        # I am using 'product_name_official' based on our previous database setup.
+        sql = """
+            SELECT product_id, product_name_official 
+            FROM PRODUCTS 
+            ORDER BY product_name_official ASC
+        """
+        cur.execute(sql)
+        products = cur.fetchall()
+
+        # Convert the raw database rows into a clean JSON list
+        product_list = []
+        for prod in products:
+            product_list.append({
+                "product_id": prod[0],
+                "product_name_official": prod[1]
+                # You can add more fields here later (like category, price, etc.)
+                # e.g., "price": prod[2]
+            })
+
+        return jsonify(product_list), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+
+
+
+#---------------INVENTORY---------------------------------------------------------
+@app.route('/inventory/branch/<int:branch_id>', methods=['GET'])
+@jwt_required()
+def get_branch_inventory(branch_id):
+    cur = mysql.connection.cursor()
+    try:
+        sql = """
+            SELECT 
+                bi.inventory_id,
+                p.product_id,
+                p.product_name_official,
+                p.category_type,
+                bi.batch_number,
+                bi.expiry_date,
+                bi.quantity_on_hand,
+                p.price_regular
+            FROM BRANCH_INVENTORY bi
+            JOIN PRODUCTS p ON bi.product_id = p.product_id
+            WHERE bi.branch_id = %s
+            ORDER BY p.product_name_official ASC, bi.expiry_date ASC
+        """
+        cur.execute(sql, (branch_id,))
+        inventory_items = cur.fetchall()
+
+        inventory_list = []
+        for item in inventory_items:
+            inventory_list.append({
+                "inventory_id": item[0],
+                "product_id": item[1],
+                "product_name": item[2],
+                "category": item[3],
+                "batch_number": item[4],
+                # Dates need to be converted to strings for JSON formatting
+                "expiry_date": item[5].strftime('%Y-%m-%d') if item[5] else None,
+                "quantity_on_hand": item[6],
+                "price": float(item[7]) if item[7] else 0.00
+            })
+
+        return jsonify(inventory_list), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+@app.route('/inventory/receive', methods=['POST'])
+@jwt_required()
+def receive_inventory():
+    # 1. Get the Identity of the person receiving the stock
+    claims = get_jwt()
+    current_role = claims['role']
+    
+    # Optional: Restrict to managers and admins
+    if current_role == 'staff':
+        return jsonify({"message": "Access Denied: Only Managers/Admins can receive inventory"}), 403
+
+    # 2. Get Data from Postman payload
+    data = request.json
+    
+    inventory_id = data.get('inventory_id') # Manual ID based on your schema
+    branch_id = data.get('branch_id')
+    product_id = data.get('product_id')
+    gondola_id = data.get('gondola_id') # Shelf location
+    batch_number = data.get('batch_number')
+    expiry_date = data.get('expiry_date') # Format: YYYY-MM-DD
+    quantity = data.get('quantity_on_hand')
+    reorder_level = data.get('reorder_level', 5) # Default to 5 if not provided
+    target_stock = data.get('target_stock_level', 100) # Default to 100 if not provided
+
+    # Basic Validation
+    if not all([inventory_id, branch_id, product_id, batch_number, expiry_date, quantity]):
+        return jsonify({"message": "Missing required fields (inventory_id, branch_id, product_id, batch_number, expiry_date, quantity_on_hand)"}), 400
+
+    cur = mysql.connection.cursor()
+    
+    try:
+        # 3. Insert the new batch into BRANCH_INVENTORY
+        sql_insert = """
+            INSERT INTO BRANCH_INVENTORY 
+            (inventory_id, branch_id, product_id, gondola_id, reorder_level, target_stock_level, batch_number, expiry_date, quantity_on_hand)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cur.execute(sql_insert, (inventory_id, branch_id, product_id, gondola_id, reorder_level, target_stock, batch_number, expiry_date, quantity))
+        
+        # 4. (Optional but recommended) Update the Global Product total_stock_quantity
+        sql_update_global = """
+            UPDATE PRODUCTS 
+            SET total_stock_quantity = IFNULL(total_stock_quantity, 0) + %s 
+            WHERE product_id = %s
+        """
+        cur.execute(sql_update_global, (quantity, product_id))
+
+        mysql.connection.commit()
+        return jsonify({"message": f"Successfully received {quantity} units of Product {product_id} into Branch {branch_id}."}), 201
+
+    except Exception as e:
+        # If there's a Foreign Key error (e.g., product doesn't exist), it will be caught here
+        mysql.connection.rollback() 
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)
+
+# ROUTE: CREATE USER 
+@app.route('/create-user-duplicate', methods=['POST'])
+@jwt_required()
+def create_user_duplicate():
     # --- 1. GET ROLE OF CURRENT USER ---
     claims = get_jwt()
     current_role = claims['role']
@@ -566,21 +907,23 @@ def search_product():
     
         sql = """
             SELECT 
+                bi.inventory_id,
                 p.product_id,
                 p.product_name_official, 
                 bi.batch_number, 
                 bi.expiry_date, 
                 bi.quantity_on_hand, 
+                p.price_regular,
                 g.gondola_code
             FROM BRANCH_INVENTORY bi
             JOIN PRODUCTS p ON bi.product_id = p.product_id
             JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
             WHERE bi.branch_id = %s 
-              AND p.product_name_official LIKE %s
+              AND (p.product_name_official LIKE %s OR bi.batch_number LIKE %s)
             ORDER BY p.product_name_official ASC, bi.expiry_date ASC
         """
         like_pattern = f"%{search_query}%"
-        cur.execute(sql, (current_branch_id, like_pattern))
+        cur.execute(sql, (current_branch_id, like_pattern, like_pattern))
         results = cur.fetchall()
 
         if not results:
@@ -590,12 +933,14 @@ def search_product():
         search_results = []
         for row in results:
             search_results.append({
-                "product_id": row[0],
-                "product_name": row[1],
-                "batch_number": row[2],
-                "expiry_date": row[3].strftime('%Y-%m-%d') if row[3] else None,
-                "quantity": row[4],
-                "location": row[5]
+                "inventory_id": row[0],
+                "product_id": row[1],
+                "product_name": row[2],
+                "batch_number": row[3],
+                "expiry_date": row[4].strftime('%Y-%m-%d') if row[4] else None,
+                "quantity_on_hand": row[5],
+                "price": float(row[6]) if row[6] else 0.00,
+                "gondola_code": row[7]
             })
 
         return jsonify({

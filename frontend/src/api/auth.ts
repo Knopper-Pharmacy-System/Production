@@ -1,7 +1,9 @@
+// src/api/auth.ts
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
-const API_BASE_URL = import.meta.env.DEV ? "/api" : PROD_API_BASE_URL;
+const DEV_API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL = import.meta.env.DEV ? DEV_API_BASE_URL : PROD_API_BASE_URL;
 
-type LoginPayload = {
+export type LoginPayload = {
   username: string;
   password: string;
 };
@@ -9,27 +11,38 @@ type LoginPayload = {
 export type LoginResponse = {
   access_token: string;
   role: string;
+  // branch?: number;   // optional – your backend doesn't send it yet
 };
 
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
-  let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/login`, {
+    const response = await fetch(`${API_BASE_URL}/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
     });
-  } catch {
-    throw new Error("Cannot reach login server (network/CORS). Please check backend URL and CORS settings.");
+
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = {};
+      }
+      throw new Error(errorData.message || `Login failed (${response.status})`);
+    }
+
+    const data = await response.json();
+
+    if (!data.access_token || !data.role) {
+      throw new Error("Invalid response from server: missing token or role");
+    }
+
+    return data as LoginResponse;
+  } catch (err: any) {
+    console.error("[auth.ts] Login error:", err);
+    throw new Error(err.message || "Cannot reach login server. Check if backend is running.");
   }
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data.message || "Login failed.");
-  }
-
-  return data as LoginResponse;
 }

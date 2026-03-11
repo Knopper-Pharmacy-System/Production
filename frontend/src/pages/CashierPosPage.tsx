@@ -11,10 +11,14 @@ import {
 } from "lucide-react";
 import logoOutline from "../assets/logo_outline.png";
 import bannerLogo from "../assets/banner_logo.png";
-import { db } from "../api/db"; // Enable Dexie for offline support
+import { closeShiftWithBalance, db, getActiveShift, startShift, updateActiveShiftOpeningBalance, verifyManagerPin } from "../api/db"; // Enable Dexie for offline support
 import { logout } from "../hooks/useAuth";
 import InventoryModal from "../components/InventoryModal";
 import CartDisplay from "../components/CartDisplay";
+import OpeningBalanceModal from "../components/OpeningBalanceModal";
+import ManagerAuthModal from "../components/ManagerAuthModal";
+import ClosingBalanceModal from "../components/ClosingBalanceModal";
+import CheckoutModal from "../components/CheckoutModal";
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
@@ -25,6 +29,15 @@ const CATEGORIES = [
   { value: "GROCERY", label: "Grocery" },
   { value: "EQUIPMENT", label: "Equipment" },
 ];
+
+const DISCOUNT_TYPES = [
+  "#1",
+  "#2",
+  "#3",
+  "#4",
+];
+
+const DISCOUNT_RATES = [0, 0.20, 0.10, 0];
 
 type CartItem = {
   id: number;
@@ -59,19 +72,49 @@ type InventoryItem = {
 function CashierPosPage() {
   const [currentDate, setCurrentDate] = useState("");
   const [currentTime, setCurrentTime] = useState("");
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("pos_cartItems");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [currentQuantity, setCurrentQuantity] = useState(1);
-  const [currentPrice, setCurrentPrice] = useState("");
   const [currentItemDescription, setCurrentItemDescription] = useState("");
-  const [discount, setDiscount] = useState(0);
-  const [addOn, setAddOn] = useState(0);
+  const [addOn, setAddOn] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("pos_addOn");
+      return saved ? Number(saved) : 0;
+    } catch { return 0; }
+  });
   const [terminalId] = useState("001");
   const [invoiceNo] = useState("000000001");
   const [transNo] = useState("000000001");
-  const [cashierName] = useState("Gino L.");
+  const [cashierName] = useState(() => localStorage.getItem("cashier_username") || "Cashier");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [isEditingOpeningBalance, setIsEditingOpeningBalance] = useState(false);
+  const [isOpeningShift, setIsOpeningShift] = useState(false);
+  const [shiftId, setShiftId] = useState<string | null>(null);
+  const [discountTypeIndex, setDiscountTypeIndex] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("pos_discountTypeIndex");
+      return saved ? Number(saved) : 0;
+    } catch { return 0; }
+  });
+  const discountTypeLabel = DISCOUNT_TYPES[discountTypeIndex];
+
+  // Manager approval modal state
+  const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
+  const [isAuthorizingManager, setIsAuthorizingManager] = useState(false);
+  const [managerError, setManagerError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"discount" | "return" | "payment" | null>(null);
+  const [isKeybindHelpOpen, setIsKeybindHelpOpen] = useState(false);
+  const [isClosingBalanceOpen, setIsClosingBalanceOpen] = useState(false);
+  const [isClosingShift, setIsClosingShift] = useState(false);
+  const [isReceiptConfirmOpen, setIsReceiptConfirmOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   // Inventory modal
   const [showInventoryModal, setShowInventoryModal] = useState(false);
@@ -85,6 +128,38 @@ function CashierPosPage() {
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const inventorySearchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemRef = useRef<HTMLDivElement | null>(null);
+  const barcodeInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Persist cart state to localStorage
+  useEffect(() => { localStorage.setItem("pos_cartItems", JSON.stringify(cartItems)); }, [cartItems]);
+  useEffect(() => { localStorage.setItem("pos_addOn", String(addOn)); }, [addOn]);
+  useEffect(() => { localStorage.setItem("pos_discountTypeIndex", String(discountTypeIndex)); }, [discountTypeIndex]);
+
+  // Check for active shift on mount.
+  useEffect(() => {
+    let mounted = true;
+    const checkActiveShift = async () => {
+      try {
+        const active = await getActiveShift();
+        if (!mounted) return;
+
+        if (active) {
+          setShiftId(active.shiftId);
+          setIsDrawerOpen(false);
+        } else {
+          setIsDrawerOpen(true);
+        }
+      } catch (err) {
+        console.error("Failed to check shift status:", err);
+        if (mounted) setIsDrawerOpen(true);
+      }
+    };
+
+    checkActiveShift();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Background load all inventory after login
   useEffect(() => {
@@ -151,6 +226,7 @@ function CashierPosPage() {
   useEffect(() => {
     const handleKeyDown = (e: Event) => {
       const keyboardEvent = e as unknown as KeyboardEvent;
+      if (isDrawerOpen) return;
       if (keyboardEvent.key === "F2" || keyboardEvent.keyCode === 113) {
         keyboardEvent.preventDefault();
         if (!showInventoryModal) {
@@ -167,7 +243,7 @@ function CashierPosPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showInventoryModal]);
+  }, [showInventoryModal, isDrawerOpen]);
 
   // Clear selected items when modal closes
   useEffect(() => {
@@ -343,6 +419,62 @@ function CashierPosPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent | Event) => {
       if (e instanceof KeyboardEvent) {
+        if (e.key === "Tab") {
+          const target = e.target as HTMLElement | null;
+          const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
+          if (!isTypingTarget) {
+            e.preventDefault();
+            setIsKeybindHelpOpen((prev) => !prev);
+          }
+          return;
+        }
+
+        if (isKeybindHelpOpen && e.key === "Escape") {
+          e.preventDefault();
+          setIsKeybindHelpOpen(false);
+          return;
+        }
+
+        if (isDrawerOpen) return;
+
+        if (e.ctrlKey && e.key.toLowerCase() === "d") {
+          e.preventDefault();
+          if (shiftId && !isEditingOpeningBalance && !showInventoryModal && !isManagerModalOpen) {
+            setError(null);
+            setIsEditingOpeningBalance(true);
+          }
+          return;
+        }
+
+        if (e.ctrlKey && e.key.toLowerCase() === "x") {
+          e.preventDefault();
+          if (shiftId && !isClosingBalanceOpen && !showInventoryModal && !isManagerModalOpen && !isEditingOpeningBalance) {
+            if (cartItems.length > 0) {
+              setError("Finish or clear cart before closing shift.");
+            } else {
+              setError(null);
+              setIsClosingBalanceOpen(true);
+            }
+          }
+          return;
+        }
+
+        if (e.ctrlKey && e.key === "F3") {
+          e.preventDefault();
+          setDiscountTypeIndex(i => (i + 1) % DISCOUNT_TYPES.length);
+          return;
+        }
+
+        if (e.key === "Enter") {
+          const target = e.target as HTMLElement | null;
+          const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
+          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen) {
+            e.preventDefault();
+            barcodeInputRef.current?.focus();
+          }
+          return;
+        }
+
         if (e.key === "F2") {
           e.preventDefault();
           setInventorySearch("");
@@ -360,7 +492,7 @@ function CashierPosPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [cartItems]);
+  }, [cartItems, isDrawerOpen, shiftId, isEditingOpeningBalance, showInventoryModal, isManagerModalOpen, isKeybindHelpOpen, isClosingBalanceOpen, discountTypeIndex]);
 
   // Separate effect for loading more
   useEffect(() => {
@@ -398,6 +530,7 @@ function CashierPosPage() {
   }, [currentPage, showInventoryModal, inventorySearch, selectedCategory]);
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.total, 0);
+  const discount = subtotal * DISCOUNT_RATES[discountTypeIndex];
   const amountDue = subtotal - discount + addOn;
 
   const addItemToSelected = (item: InventoryItem) => {
@@ -471,13 +604,32 @@ function CashierPosPage() {
     setSelectedItems([]);
     setCurrentItemDescription("");
     setCurrentQuantity(1);
-    setCurrentPrice("");
     setShowInventoryModal(false);
     setError(null);
   };
 
   const removeItemFromCart = (id: number) => {
     setCartItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleDirectAddToCart = useCallback((item: { id: number; name: string; batch: string; price: number; stock: number }) => {
+    const newCartItem: CartItem = {
+      id: Date.now() + Math.random(),
+      description: `${item.name} (${item.batch})`,
+      quantity: 1,
+      price: item.price,
+      total: item.price,
+      inventoryId: item.id,
+    };
+    setCartItems(prev => [...prev, newCartItem]);
+  }, []);
+
+  const updateCartItemPrice = (id: number, newPrice: number) => {
+    setCartItems(prev =>
+      prev.map(item =>
+        item.id === id ? { ...item, price: newPrice, total: newPrice * item.quantity } : item
+      )
+    );
   };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -507,33 +659,180 @@ function CashierPosPage() {
   };
 
   const handlePayment = useCallback(async () => {
+    if (isDrawerOpen) {
+      setError("Open station first before accepting payments.");
+      return;
+    }
+
     if (cartItems.length === 0) {
       setError("Cart is empty");
       return;
     }
 
+    // Discount types #2, #3, #4 require manager approval before showing checkout
+    if (discountTypeIndex > 0) {
+      setPendingAction("payment");
+      setManagerError(null);
+      setIsManagerModalOpen(true);
+      return;
+    }
+
+    setIsCheckoutOpen(true);
+  }, [cartItems, isDrawerOpen, discountTypeIndex]);
+
+  const processPayment = useCallback(async () => {
+    setIsCheckoutOpen(false);
     setIsLoading(true);
     setError(null);
 
     try {
       // TODO: Send sale to backend (SALES_HEADERS + SALES_DETAILS)
-      // For now just simulate success
       await new Promise(r => setTimeout(r, 800));
       setCartItems([]);
-      setDiscount(0);
       setAddOn(0);
-      setError("Payment successful — receipt printed!");
-      setTimeout(() => setError(null), 4000);
+      setDiscountTypeIndex(0);
+      localStorage.removeItem("pos_cartItems");
+      localStorage.removeItem("pos_addOn");
+      localStorage.removeItem("pos_discountTypeIndex");
+      setIsReceiptConfirmOpen(true);
     } catch (err) {
       setError("Payment processing failed");
     } finally {
       setIsLoading(false);
     }
-  }, [cartItems]);
+  }, []);
+
+  const handleOpenStation = async (amount: number) => {
+    setIsOpeningShift(true);
+    setError(null);
+
+    try {
+      if (isEditingOpeningBalance) {
+        const updated = await updateActiveShiftOpeningBalance(amount);
+        if (!updated) {
+          setError("No active shift found to update.");
+          return;
+        }
+
+        setIsEditingOpeningBalance(false);
+        setError("Opening balance updated.");
+      } else {
+        const shift = await startShift(amount);
+        setShiftId(shift.shiftId);
+        setIsDrawerOpen(false);
+      }
+
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+    } catch (err) {
+      console.error("Failed to open shift:", err);
+      setError(isEditingOpeningBalance ? "Could not update opening balance. Please try again." : "Could not open station. Please try again.");
+    } finally {
+      setIsOpeningShift(false);
+    }
+  };
+
+  const handleResetSavedOpeningBalance = async () => {
+    setIsOpeningShift(true);
+    setError(null);
+
+    try {
+      const updated = await updateActiveShiftOpeningBalance(0);
+      if (!updated) {
+        setError("No active shift found to reset.");
+        return;
+      }
+
+      setIsEditingOpeningBalance(false);
+      setError("Opening balance reset to PHP 0.00.");
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+    } catch (err) {
+      console.error("Failed to reset opening balance:", err);
+      setError("Could not reset opening balance. Please try again.");
+    } finally {
+      setIsOpeningShift(false);
+    }
+  };
+
+  const requireManagerApproval = (action: "discount" | "return") => {
+    setPendingAction(action);
+    setManagerError(null);
+    setIsManagerModalOpen(true);
+  };
+
+  const handleCloseShift = async (amount: number) => {
+    if (!shiftId) {
+      setError("No active shift to close.");
+      return;
+    }
+
+    if (cartItems.length > 0) {
+      setError("Finish or clear cart before closing shift.");
+      return;
+    }
+
+    setIsClosingShift(true);
+    setError(null);
+
+    try {
+      const closed = await closeShiftWithBalance(shiftId, amount);
+      if (!closed) {
+        setError("Could not close shift.");
+        return;
+      }
+
+      setIsClosingBalanceOpen(false);
+      setShiftId(null);
+      setDiscountTypeIndex(0);
+      setAddOn(0);
+      localStorage.removeItem("pos_cartItems");
+      localStorage.removeItem("pos_addOn");
+      localStorage.removeItem("pos_discountTypeIndex");
+      setIsDrawerOpen(true);
+      setError("Shift closed successfully.");
+    } catch (err) {
+      console.error("Failed to close shift:", err);
+      setError("Could not close shift. Please try again.");
+    } finally {
+      setIsClosingShift(false);
+    }
+  };
+
+  const handleManagerAuthorize = async (pin: string) => {
+    setIsAuthorizingManager(true);
+    setManagerError(null);
+
+    try {
+      const isAuthorized = await verifyManagerPin(pin);
+      if (!isAuthorized) {
+        setManagerError("Unauthorized: invalid manager PIN.");
+        return;
+      }
+
+      if (pendingAction === "return") {
+        setError("Return action authorized. Continue with return workflow.");
+      }
+
+      if (pendingAction === "payment") {
+        setIsManagerModalOpen(false);
+        setPendingAction(null);
+        setIsCheckoutOpen(true);
+        return;
+      }
+
+      setIsManagerModalOpen(false);
+      setPendingAction(null);
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+    } catch (err) {
+      console.error("Manager authorization failed:", err);
+      setManagerError("Authorization failed. Try again.");
+    } finally {
+      setIsAuthorizingManager(false);
+    }
+  };
 
   return (
-    <div className="h-screen w-full overflow-hidden bg-slate-100 p-6 font-sans">
-      <div className="mx-auto grid h-full max-w-[1800px] grid-cols-[1fr_400px] gap-6 overflow-hidden">
+    <div className="h-screen w-full overflow-hidden bg-slate-300 p-6 font-sans">
+      <div className={`mx-auto grid h-full max-w-[1800px] grid-cols-[1fr_400px] gap-6 overflow-hidden transition ${(isDrawerOpen || isEditingOpeningBalance || isClosingBalanceOpen) ? "pointer-events-none blur-sm" : ""}`}>
 
         {/* LEFT - Transaction Area */}
         <div className="flex flex-col gap-6 overflow-hidden h-full">
@@ -575,10 +874,9 @@ function CashierPosPage() {
             removeItemFromCart={removeItemFromCart}
             currentItemDescription={currentItemDescription}
             setCurrentItemDescription={setCurrentItemDescription}
-            currentQuantity={currentQuantity}
-            setCurrentQuantity={setCurrentQuantity}
-            currentPrice={currentPrice}
-            setCurrentPrice={setCurrentPrice}
+            discountTypeLabel={discountTypeLabel}
+            discountTypeIndex={discountTypeIndex}
+            updateCartItemPrice={updateCartItemPrice}
             handleKeyPress={handleKeyPress}
             terminalId={terminalId}
             invoiceNo={invoiceNo}
@@ -590,12 +888,14 @@ function CashierPosPage() {
             setCurrentPage={setCurrentPage}
             setHasMore={setHasMore}
             setShowInventoryModal={setShowInventoryModal}
+            barcodeInputRef={barcodeInputRef}
+            onAddToCart={handleDirectAddToCart}
           />
         </div>
 
         {/* RIGHT - Summary */}
         <div className="flex flex-col gap-6 h-full overflow-hidden">
-          <div className="shrink-0 flex items-center justify-between rounded-2xl bg-white p-6 shadow-lg border border-slate-200">
+          <div className="shrink-0 flex items-center justify-between rounded-2xl bg-white p-6 shadow-lg border border-slate-300">
             <div className="flex items-center gap-3">
               <div className="bg-blue-600 p-2 rounded-lg text-white"><ReceiptIcon className="h-5 w-5" /></div>
               <h2 className="text-lg font-black text-slate-800 uppercase">Summary</h2>
@@ -603,13 +903,13 @@ function CashierPosPage() {
             <span className="text-[10px] font-bold text-slate-400">#{invoiceNo}</span>
           </div>
 
-          <div className="shrink-0 space-y-4 rounded-3xl bg-white p-8 shadow-xl border border-slate-200">
+          <div className="shrink-0 space-y-4 rounded-3xl bg-white p-8 shadow-xl border border-slate-300">
             <div className="flex justify-between text-slate-600">
               <span>Subtotal</span><span>{subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-red-600 font-bold">Discount</span>
-              <input type="number" value={discount} onChange={e => setDiscount(Number(e.target.value) || 0)} className="w-24 text-right bg-red-50 border rounded p-1" />
+            <div className="flex justify-between items-center">
+              <span className="text-red-600 font-bold">Discount <span className="text-xs font-normal text-slate-400">({(DISCOUNT_RATES[discountTypeIndex] * 100).toFixed(0)}%)</span></span>
+              <span className="font-bold text-red-600">{discount > 0 ? `-${discount.toFixed(2)}` : "0.00"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600 font-bold">Add-on</span>
@@ -625,7 +925,7 @@ function CashierPosPage() {
               disabled={isLoading || cartItems.length === 0}
               className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-emerald-700 disabled:opacity-50 mt-4"
             >
-              {isLoading ? "Processing..." : "PAYMENT (F12)"}
+              {isLoading ? "Processing..." : "PAYMENT"}
             </button>
           </div>
 
@@ -637,7 +937,7 @@ function CashierPosPage() {
           </div>
 
           {/* User info */}
-          <div className="shrink-0 rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
+          <div className="shrink-0 rounded-2xl bg-white p-6 shadow-xl border border-slate-300">
             <div className="flex items-center gap-4 mb-4">
               <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center text-[#062d8c]">
                 <User />
@@ -679,6 +979,114 @@ function CashierPosPage() {
         addSelectedToCart={addSelectedToCart}
         CATEGORIES={CATEGORIES}
       />
+
+      <OpeningBalanceModal
+        isOpen={isDrawerOpen || isEditingOpeningBalance}
+        isSubmitting={isOpeningShift}
+        onSubmit={handleOpenStation}
+        onResetSaved={isEditingOpeningBalance ? handleResetSavedOpeningBalance : undefined}
+        title={isEditingOpeningBalance ? "Edit Opening Balance" : "Opening Balance"}
+        description={isEditingOpeningBalance ? "Correct the shift opening balance amount." : "Count your bills and coins to start this cashier shift."}
+        actionLabel={isEditingOpeningBalance ? "Save Balance" : "Open Station"}
+      />
+
+      <ManagerAuthModal
+        isOpen={isManagerModalOpen}
+        title="Manager PIN Required"
+        description={
+          pendingAction === "payment"
+            ? `Authorize payment with ${DISCOUNT_TYPES[discountTypeIndex]} discount applied.`
+            : "Authorize special cashier action."
+        }
+        isSubmitting={isAuthorizingManager}
+        error={managerError}
+        onClose={() => {
+          setIsManagerModalOpen(false);
+          setPendingAction(null);
+          setManagerError(null);
+        }}
+        onAuthorize={handleManagerAuthorize}
+      />
+
+      <ClosingBalanceModal
+        isOpen={isClosingBalanceOpen}
+        isSubmitting={isClosingShift}
+        onSubmit={handleCloseShift}
+      />
+
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        cartItems={cartItems}
+        subtotal={subtotal}
+        discount={discount}
+        discountTypeLabel={discountTypeLabel}
+        discountRate={DISCOUNT_RATES[discountTypeIndex]}
+        addOn={addOn}
+        amountDue={amountDue}
+        isProcessing={isLoading}
+        onClose={() => setIsCheckoutOpen(false)}
+        onConfirm={processPayment}
+      />
+
+      {/* Receipt Confirmation */}
+      {isReceiptConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+          tabIndex={-1}
+          ref={el => el?.focus()}
+          onKeyDown={e => {
+            if (e.key === "Enter") { e.preventDefault(); setIsReceiptConfirmOpen(false); /* TODO: trigger receipt print */ }
+            if (e.key === "Escape") { e.preventDefault(); setIsReceiptConfirmOpen(false); }
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+              <svg className="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-black text-slate-900">Payment Successful</h3>
+            <p className="mt-1 mb-6 text-sm text-slate-500">Print a receipt for this transaction?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsReceiptConfirmOpen(false)}
+                className="flex-1 rounded-xl border-2 border-slate-200 py-3 font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Skip
+              </button>
+              <button
+                onClick={() => {
+                  // TODO: trigger receipt print
+                  setIsReceiptConfirmOpen(false);
+                }}
+                className="flex-1 rounded-xl bg-[#062d8c] py-3 font-bold text-white hover:bg-[#041848]"
+              >
+                Print Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isKeybindHelpOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-200 p-6">
+              <h3 className="text-2xl font-black text-slate-900">Keyboard Shortcuts</h3>
+              <p className="mt-1 text-sm text-slate-500">Press Tab or Esc to close this guide.</p>
+            </div>
+            <div className="space-y-2 p-6 text-sm">
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Open this keybind guide</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Tab</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Cycle discount type</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Ctrl + F3</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Open inventory modal</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">F2</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Proceed to payment</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">F12</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Edit opening balance</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Ctrl + D</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Open close shift modal</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Ctrl + X</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Close inventory modal</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Esc</kbd></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 // src/api/auth.ts
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
-const DEV_API_BASE_URL = "http://localhost:5000";
-const API_BASE_URL = import.meta.env.DEV ? DEV_API_BASE_URL : PROD_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 export type LoginPayload = {
   username: string;
@@ -43,6 +42,6 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     return data as LoginResponse;
   } catch (err: any) {
     console.error("[auth.ts] Login error:", err);
-    throw new Error(err.message || "Cannot reach login server. Check if backend is running.");
+    throw new Error(err.message || "Cannot reach login server. Login online first for offline access.");
   }
 }

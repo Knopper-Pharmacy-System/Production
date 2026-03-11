@@ -4,23 +4,27 @@ import {
   Calendar,
   Clock,
   LogOut,
-  Plus,
   Receipt as ReceiptIcon,
-  Trash2,
   User,
   Wifi,
   WifiOff,
-  Search,
-  ShoppingCart,
 } from "lucide-react";
 import logoOutline from "../assets/logo_outline.png";
 import bannerLogo from "../assets/banner_logo.png";
 import { db } from "../api/db"; // Enable Dexie for offline support
 import { logout } from "../hooks/useAuth";
+import InventoryModal from "../components/InventoryModal";
+import CartDisplay from "../components/CartDisplay";
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
-const DEV_API_BASE_URL = "http://localhost:5000";
-const API_BASE_URL = import.meta.env.DEV ? DEV_API_BASE_URL : PROD_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
+
+const CATEGORIES = [
+  { value: "", label: "All" },
+  { value: "MEDICINE", label: "Medicine" },
+  { value: "GROCERY", label: "Grocery" },
+  { value: "EQUIPMENT", label: "Equipment" },
+];
 
 type CartItem = {
   id: number;
@@ -29,6 +33,16 @@ type CartItem = {
   price: number;
   total: number;
   inventoryId?: number;
+};
+
+type SelectedItem = {
+  id: number;
+  name: string;
+  batch: string;
+  price: number;
+  quantity: number;
+  total: number;
+  stock: number; // available stock
 };
 
 type InventoryItem = {
@@ -62,10 +76,53 @@ function CashierPosPage() {
   // Inventory modal
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [inventorySearch, setInventorySearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [selectedInventoryIndex, setSelectedInventoryIndex] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const inventorySearchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemRef = useRef<HTMLDivElement | null>(null);
+
+  // Background load all inventory after login
+  useEffect(() => {
+    const loadAllInventory = async () => {
+      try {
+        const token = localStorage.getItem("access_token");
+        if (!token) return;
+
+        // Check if we already have items
+        const count = await db.inventory.count();
+        if (count > 1000) return; // Assume already loaded
+
+        let allItems: any[] = [];
+        let offset = 0;
+        const limit = 500;
+
+        while (true) {
+          const res = await fetch(`${API_BASE_URL}/inventory/branch/1?limit=${limit}&offset=${offset}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (!res.ok) break;
+          const data = await res.json();
+          if (data.length === 0) break;
+          allItems.push(...data);
+          offset += limit;
+          if (data.length < limit) break;
+        }
+
+        await db.inventory.clear();
+        await db.inventory.bulkAdd(allItems.map(i => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
+        console.log(`Loaded ${allItems.length} items in background`);
+      } catch (err) {
+        console.error("Background inventory load failed:", err);
+      }
+    };
+
+    loadAllInventory();
+  }, []);
 
   // Clock
   useEffect(() => {
@@ -90,24 +147,56 @@ function CashierPosPage() {
     };
   }, []);
 
+  // F2 key handler
+  useEffect(() => {
+    const handleKeyDown = (e: Event) => {
+      const keyboardEvent = e as unknown as KeyboardEvent;
+      if (keyboardEvent.key === "F2" || keyboardEvent.keyCode === 113) {
+        keyboardEvent.preventDefault();
+        if (!showInventoryModal) {
+          setInventorySearch("");
+          setSelectedCategory("");
+          setSelectedInventoryIndex(0);
+          setInventoryItems([]);
+          setCurrentPage(0);
+          setHasMore(true);
+          setShowInventoryModal(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showInventoryModal]);
+
+  // Clear selected items when modal closes
+  useEffect(() => {
+    if (!showInventoryModal) {
+      setSelectedItems([]);
+    }
+  }, [showInventoryModal]);
+
   // Load inventory on search or modal open
   useEffect(() => {
     if (!showInventoryModal) return;
 
-    const loadInventory = async () => {
-      setIsLoading(true);
+    const loadInventory = async (append = false) => {
+      const isSearch = inventorySearch.trim();
+      setLoadingMore(append);
+      if (!append) setIsLoading(true);
       setError(null);
 
       try {
         let items: InventoryItem[] = [];
+        let newHasMore = true;
 
-        if (inventorySearch.trim()) {
-          // Search mode
+        if (isSearch) {
+          // Search mode - fetch from server
           if (navigator.onLine) {
             const token = localStorage.getItem("access_token");
             if (!token) throw new Error("No authentication token found");
 
-            const res = await fetch(`${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}`, {
+            const res = await fetch(`${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}${selectedCategory ? `&category=${encodeURIComponent(selectedCategory)}` : ''}`, {
               method: "GET",
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -122,93 +211,130 @@ function CashierPosPage() {
             const data = await res.json();
             items = data.items.map((item: any) => ({
               id: item.inventory_id,
-              name: item.product_name,
+              name: (item.product_name || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.product_name || "Unnamed Product"),
+              description: item.product_name_official || "",
               productId: item.product_id,
               batch: item.batch_number || "—",
               expiry: item.expiry_date || null,
               quantity: Number(item.quantity_on_hand) || 0,
               price: Number(item.price) || 0,
               gondola: item.gondola_code || "—",
+              category: item.category,
             }));
+            newHasMore = false; // Search returns all
           } else {
-            // Offline search: search local DB
-            const localItems = await db.inventory
+            // Offline search
+            let localItems = await db.inventory
               .where('name').startsWithIgnoreCase(inventorySearch)
               .or('batch').startsWithIgnoreCase(inventorySearch)
               .toArray();
+            if (selectedCategory) {
+              localItems = localItems.filter(item => item.category === selectedCategory);
+            }
             items = localItems.map(item => ({
               id: item.id!,
-              name: item.name,
+              name: (item.name || item.product_name_official || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.name || item.product_name_official || "Unnamed Product"),
+              description: item.product_name_official || "",
               productId: item.productId,
-              batch: item.batch || "—",
-              expiry: item.expiry || null,
-              quantity: item.quantity,
-              price: item.price,
-              gondola: item.gondola || "—",
+              batch: item.batch || item.batch_number || "—",
+              expiry: item.expiry || item.expiry_date || null,
+              quantity: item.quantity || item.quantity_on_hand || 0,
+              price: item.price || item.price_regular || 0,
+              gondola: item.gondola || item.gondola_code || "—",
             }));
+            newHasMore = false;
           }
         } else {
-          // Full inventory mode
+          // Full inventory mode - load from cache first, then sync
           if (navigator.onLine) {
-            const token = localStorage.getItem("access_token");
-            if (!token) throw new Error("No authentication token found");
-
-            const res = await fetch(`${API_BASE_URL}/inventory/branch/1`, {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            });
-
-            if (!res.ok) {
-              throw new Error(`Failed to load inventory: ${res.status}`);
+            // Load from cache immediately
+            let localItems = await db.inventory.toArray();
+            if (selectedCategory) {
+              localItems = localItems.filter(item => item.category === selectedCategory);
             }
-
-            const data = await res.json();
-            items = data.map((item: any) => ({
-              id: item.inventory_id,
-              name: item.product_name || item.product_name_official || "Unnamed Product",
-              productId: item.product_id,
-              batch: item.batch_number || "—",
-              expiry: item.expiry_date || null,
-              quantity: Number(item.quantity_on_hand) || 0,
-              price: Number(item.price) || 0,
-              gondola: item.gondola_code || "—",
+            items = localItems.slice(0, 50).map(item => ({
+              id: item.id!,
+              name: (item.product_name || item.name || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.product_name || item.name || "Unnamed Product"),
+              description: item.product_name_official || "",
+              productId: item.product_id || item.productId,
+              batch: item.batch_number || item.batch || "—",
+              expiry: item.expiry_date || item.expiry || null,
+              quantity: item.quantity_on_hand || item.quantity || 0,
+              price: item.price_regular || item.price || 0,
+              gondola: item.gondola_code || item.gondola || "—",
             }));
+            newHasMore = localItems.length > 50;
 
-            // Sync to local DB
-            await db.inventory.clear();
-            await db.inventory.bulkAdd(items.map(i => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
+            // Then sync with server in background
+            setTimeout(async () => {
+              try {
+                const token = localStorage.getItem("access_token");
+                if (!token) return;
+
+                const res = await fetch(`${API_BASE_URL}/inventory/branch/1?limit=50&offset=0${selectedCategory ? `&category=${encodeURIComponent(selectedCategory)}` : ''}`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  // Update cache
+                  await db.inventory.clear();
+                  await db.inventory.bulkAdd(data.map((i: any) => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
+                }
+              } catch (err) {
+                console.error("Background sync failed:", err);
+              }
+            }, 0);
           } else {
             // Offline: load from local DB
-            const localItems = await db.inventory.toArray();
-            items = localItems.map(item => ({
+            let localItems = await db.inventory.toArray();
+            if (selectedCategory) {
+              localItems = localItems.filter(item => item.category === selectedCategory);
+            }
+            items = localItems.slice(0, 50).map(item => ({
               id: item.id!,
-              name: item.name,
-              productId: item.productId,
-              batch: item.batch || "—",
-              expiry: item.expiry || null,
-              quantity: item.quantity,
-              price: item.price,
-              gondola: item.gondola || "—",
+              name: (item.product_name || item.name || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.product_name || item.name || "Unnamed Product"),
+              description: item.product_name_official || "",
+              productId: item.product_id || item.productId,
+              batch: item.batch_number || item.batch || "—",
+              expiry: item.expiry_date || item.expiry || null,
+              quantity: item.quantity_on_hand || item.quantity || 0,
+              price: item.price_regular || item.price || 0,
+              gondola: item.gondola_code || item.gondola || "—",
             }));
+            newHasMore = localItems.length > 50;
           }
         }
 
-        setInventoryItems(items);
+        setInventoryItems(prev => append ? [...prev, ...items] : items);
+        setHasMore(newHasMore);
+        if (!append) setCurrentPage(0);
       } catch (err: any) {
         console.error("Inventory load error:", err);
         setError("Could not load inventory. " + (err.message || ""));
         setInventoryItems([]);
+        setHasMore(false);
       } finally {
         setIsLoading(false);
+        setLoadingMore(false);
       }
     };
 
-    const debounceTimer = setTimeout(loadInventory, inventorySearch.trim() ? 300 : 0); // No debounce for initial load
+    const debounceTimer = setTimeout(() => loadInventory(), inventorySearch.trim() ? 300 : 0);
     return () => clearTimeout(debounceTimer);
-  }, [showInventoryModal, inventorySearch]);  // Auto-scroll selected item
+  }, [showInventoryModal, inventorySearch, selectedCategory]);
+
+  // Reset states when modal opens
+  useEffect(() => {
+    if (showInventoryModal) {
+      setInventoryItems([]);
+      setCurrentPage(0);
+      setHasMore(true);
+      setInventorySearch("");
+      setSelectedCategory("");
+      setSelectedInventoryIndex(0);
+      setTimeout(() => inventorySearchRef.current?.focus(), 100);
+    }
+  }, [showInventoryModal]);
   useEffect(() => {
     selectedItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedInventoryIndex]);
@@ -220,8 +346,11 @@ function CashierPosPage() {
         if (e.key === "F2") {
           e.preventDefault();
           setInventorySearch("");
+          setSelectedCategory("");
           setSelectedInventoryIndex(0);
           setInventoryItems([]);
+          setCurrentPage(0);
+          setHasMore(true);
           setShowInventoryModal(true);
         } else if (e.key === "F12") {
           e.preventDefault();
@@ -233,25 +362,113 @@ function CashierPosPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [cartItems]);
 
+  // Separate effect for loading more
+  useEffect(() => {
+    if (currentPage > 0 && showInventoryModal && !inventorySearch.trim()) {
+      const loadMore = async () => {
+        setLoadingMore(true);
+        try {
+          let localItems = await db.inventory.toArray();
+          if (selectedCategory) {
+            localItems = localItems.filter(item => item.category === selectedCategory);
+          }
+          const limit = 50;
+          const offset = currentPage * limit;
+          const items = localItems.slice(offset, offset + limit).map(item => ({
+            id: item.id!,
+            name: item.product_name_official || item.name || "Unnamed Product",
+            productId: item.product_id || item.productId,
+            batch: item.batch_number || item.batch || "—",
+            expiry: item.expiry_date || item.expiry || null,
+            quantity: item.quantity_on_hand || item.quantity || 0,
+            price: item.price_regular || item.price || 0,
+            gondola: item.gondola_code || item.gondola || "—",
+          }));
+
+          setInventoryItems(prev => [...prev, ...items]);
+          setHasMore(items.length === limit);
+        } catch (err) {
+          console.error("Load more error:", err);
+        } finally {
+          setLoadingMore(false);
+        }
+      };
+      loadMore();
+    }
+  }, [currentPage, showInventoryModal, inventorySearch, selectedCategory]);
+
   const subtotal = cartItems.reduce((sum, item) => sum + item.total, 0);
   const amountDue = subtotal - discount + addOn;
 
-  const addItemToCart = (item: InventoryItem) => {
-    if (item.quantity < currentQuantity) {
-      setError(`Not enough stock (${item.quantity} available)`);
-      return;
-    }
+  const addItemToSelected = (item: InventoryItem) => {
+    setSelectedItems(prev => {
+      // Check if item already exists
+      const existingIndex = prev.findIndex(i => i.id === item.id);
+      if (existingIndex >= 0) {
+        // Update quantity if already exists
+        const updated = [...prev];
+        const newQuantity = updated[existingIndex].quantity + currentQuantity;
+        if (newQuantity > item.quantity) {
+          setError(`Cannot add more items. Only ${item.quantity} available.`);
+          return prev;
+        }
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: newQuantity,
+          total: newQuantity * item.price
+        };
+        return updated;
+      }
+      
+      // Add new item
+      if (currentQuantity > item.quantity) {
+        setError(`Not enough stock. Only ${item.quantity} available.`);
+        return prev;
+      }
+      
+      const newSelectedItem: SelectedItem = {
+        id: item.id,
+        name: item.name,
+        batch: item.batch,
+        price: item.price,
+        quantity: currentQuantity,
+        total: currentQuantity * item.price,
+        stock: item.quantity
+      };
+      
+      return [...prev, newSelectedItem];
+    });
+  };
 
-    const newCartItem: CartItem = {
-      id: Date.now(),
-      description: `${item.name} (${item.batch})`,
-      quantity: currentQuantity,
-      price: item.price,
-      total: currentQuantity * item.price,
-      inventoryId: item.id,
-    };
+  const removeItemFromSelected = (id: number) => {
+    setSelectedItems(prev => prev.filter(item => item.id !== id));
+  };
 
-    setCartItems(prev => [...prev, newCartItem]);
+  const updateSelectedItemQuantity = (id: number, newQuantity: number) => {
+    setSelectedItems(prev => 
+      prev.map(item => 
+        item.id === id 
+          ? { ...item, quantity: Math.max(1, Math.min(newQuantity, item.stock)), total: Math.max(1, Math.min(newQuantity, item.stock)) * item.price }
+          : item
+      )
+    );
+  };
+
+  const addSelectedToCart = () => {
+    selectedItems.forEach(item => {
+      const newCartItem: CartItem = {
+        id: Date.now() + Math.random(), // Ensure unique IDs
+        description: `${item.name} (${item.batch})`,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+        inventoryId: item.id,
+      };
+
+      setCartItems(prev => [...prev, newCartItem]);
+    });
+
+    setSelectedItems([]);
     setCurrentItemDescription("");
     setCurrentQuantity(1);
     setCurrentPrice("");
@@ -276,10 +493,13 @@ function CashierPosPage() {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedInventoryIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && e.ctrlKey) {
+      e.preventDefault();
+      addSelectedToCart();
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (inventoryItems[selectedInventoryIndex]) {
-        addItemToCart(inventoryItems[selectedInventoryIndex]);
+        addItemToSelected(inventoryItems[selectedInventoryIndex]);
       }
     } else if (e.key === "Escape") {
       setShowInventoryModal(false);
@@ -350,98 +570,27 @@ function CashierPosPage() {
             )}
           </div>
 
-          {/* IDs */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-md p-4 grid grid-cols-3 gap-6 shrink-0">
-            <div><span className="text-slate-600 text-sm">Term ID:</span> <span className="font-bold">{terminalId}</span></div>
-            <div><span className="text-slate-600 text-sm">Invoice No.:</span> <span className="font-bold">{invoiceNo}</span></div>
-            <div><span className="text-slate-600 text-sm">Trans No.:</span> <span className="font-bold">{transNo}</span></div>
-          </div>
-
-          {/* Cart Table */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-xl border border-slate-200">
-            <div className="shrink-0 border-b border-slate-100 bg-slate-50">
-              <div className="grid grid-cols-[60px_1fr_100px_140px_160px] text-[11px] font-black uppercase tracking-wider text-slate-500 p-4">
-                <span>#</span>
-                <span>Description / Batch</span>
-                <span className="text-center">Qty</span>
-                <span className="text-center">Unit Price</span>
-                <span className="text-right pr-8">Total</span>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {cartItems.map((item, idx) => (
-                <div key={item.id} className="group grid grid-cols-[60px_1fr_100px_140px_160px] border-b border-slate-50 p-4 items-center hover:bg-blue-50/50">
-                  <span className="text-sm font-bold text-slate-400">{idx + 1}</span>
-                  <span className="font-semibold text-slate-800">{item.description}</span>
-                  <span className="text-center font-bold text-slate-700">{item.quantity}</span>
-                  <span className="text-center text-slate-600">{item.price.toFixed(2)}</span>
-                  <div className="flex justify-end items-center gap-4 font-bold text-[#062d8c]">
-                    <span>{item.total.toFixed(2)}</span>
-                    <button onClick={() => removeItemFromCart(item.id)} className="p-1.5 text-red-400 hover:text-red-600">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Input Area */}
-          <div className="shrink-0 rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
-            <div className="grid grid-cols-[1fr_100px_140px_auto] gap-4 items-end">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Description</label>
-                <input
-                  type="text"
-                  value={currentItemDescription}
-                  onChange={e => setCurrentItemDescription(e.target.value)}
-                  onKeyDown={handleKeyPress}
-                  placeholder="Scan or type item..."
-                  className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400 text-center block">Qty</label>
-                <input
-                  type="number"
-                  value={currentQuantity}
-                  onChange={e => setCurrentQuantity(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 text-center font-bold outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Price</label>
-                <input
-                  type="number"
-                  value={currentPrice}
-                  onChange={e => setCurrentPrice(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 font-bold outline-none focus:border-blue-500"
-                />
-              </div>
-              <button
-                onClick={() => {/* manual add if needed */}}
-                className="bg-[#062d8c] text-white px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#041848]"
-              >
-                <Plus className="h-5 w-5" /> ADD
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between mt-4 text-slate-500">
-              <span className="text-sm font-semibold">Next item #{cartItems.length + 1}</span>
-              <button
-                onClick={() => {
-                  setInventorySearch("");
-                  setSelectedInventoryIndex(0);
-                  setInventoryItems([]);
-                  setShowInventoryModal(true);
-                }}
-                className="bg-white border-2 border-[#062d8c] text-[#062d8c] px-6 py-2 rounded-xl hover:bg-[#f0f4ff] font-semibold flex items-center gap-2"
-              >
-                <Search className="h-5 w-5" /> Inventory (F2)
-              </button>
-            </div>
-          </div>
+          <CartDisplay
+            cartItems={cartItems}
+            removeItemFromCart={removeItemFromCart}
+            currentItemDescription={currentItemDescription}
+            setCurrentItemDescription={setCurrentItemDescription}
+            currentQuantity={currentQuantity}
+            setCurrentQuantity={setCurrentQuantity}
+            currentPrice={currentPrice}
+            setCurrentPrice={setCurrentPrice}
+            handleKeyPress={handleKeyPress}
+            terminalId={terminalId}
+            invoiceNo={invoiceNo}
+            transNo={transNo}
+            setInventorySearch={setInventorySearch}
+            setSelectedCategory={setSelectedCategory}
+            setSelectedInventoryIndex={setSelectedInventoryIndex}
+            setInventoryItems={setInventoryItems}
+            setCurrentPage={setCurrentPage}
+            setHasMore={setHasMore}
+            setShowInventoryModal={setShowInventoryModal}
+          />
         </div>
 
         {/* RIGHT - Summary */}
@@ -506,101 +655,30 @@ function CashierPosPage() {
         </div>
       </div>
 
-      {/* Inventory Modal */}
-      {showInventoryModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowInventoryModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            
-            {/* Header */}
-            <div className="bg-gradient-to-r from-[#041848] to-[#062d8c] px-6 py-4 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3 text-white">
-                <Search className="h-6 w-6" />
-                <h2 className="font-bold text-xl uppercase tracking-wide">Inventory Search</h2>
-              </div>
-              <span className="text-blue-200 text-sm">Esc to close</span>
-            </div>
-
-            {/* Search */}
-            <div className="p-6 border-b shrink-0">
-              <input
-                ref={inventorySearchRef}
-                type="text"
-                value={inventorySearch}
-                onChange={e => { setInventorySearch(e.target.value); setSelectedInventoryIndex(0); }}
-                onKeyDown={handleModalKeyDown}
-                placeholder="Search product name or batch number..."
-                className="w-full px-5 py-4 border-2 border-blue-600 rounded-xl text-lg outline-none focus:ring-2 focus:ring-blue-200"
-                autoFocus
-              />
-            </div>
-
-            {/* Table Header */}
-            <div className="grid grid-cols-[3fr_140px_100px_120px_100px_100px] bg-slate-100 border-b font-bold text-xs uppercase text-slate-600 px-2 py-3 shrink-0">
-              <div className="px-4">Product / Description</div>
-              <div className="px-2">Batch</div>
-              <div className="text-center">Stock</div>
-              <div className="text-right pr-4">Price</div>
-              <div className="text-center">Expiry</div>
-              <div className="text-center">Gondola</div>
-            </div>
-
-            {/* Items */}
-            <div className="overflow-y-auto flex-1">
-              {isLoading ? (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                  <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
-                  <p>Loading inventory...</p>
-                </div>
-              ) : inventoryItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                  <ShoppingCart className="h-16 w-16 opacity-30 mb-4" />
-                  <p className="text-lg font-medium">No items found</p>
-                </div>
-              ) : (
-                inventoryItems.map((item, idx) => {
-                  const isSelected = idx === selectedInventoryIndex;
-                  const isLowStock = item.quantity <= 10;
-                  const isNearExpiry = item.expiry && new Date(item.expiry) < new Date(Date.now() + 30*24*60*60*1000);
-
-                  return (
-                    <div
-                      key={item.id}
-                      ref={isSelected ? selectedItemRef : null}
-                      onClick={() => addItemToCart(item)}
-                      className={`grid grid-cols-[3fr_140px_100px_120px_100px_100px] items-center px-2 py-3 border-b cursor-pointer transition-colors ${
-                        isSelected ? "bg-blue-100 border-l-4 border-l-blue-600" : "hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="px-4 font-medium">{item.name}</div>
-                      <div className="px-2 font-mono text-slate-600">{item.batch}</div>
-                      <div className={`text-center font-bold ${isLowStock ? "text-red-600" : "text-emerald-700"}`}>
-                        {item.quantity}
-                      </div>
-                      <div className="text-right pr-4 font-bold text-[#062d8c]">
-                        ₱{item.price.toFixed(2)}
-                      </div>
-                      <div className={`text-center ${isNearExpiry ? "text-orange-600 font-semibold" : "text-slate-600"}`}>
-                        {item.expiry ? new Date(item.expiry).toLocaleDateString("en-PH", { month: "short", day: "numeric" }) : "—"}
-                      </div>
-                      <div className="text-center font-mono text-slate-600">{item.gondola}</div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-3 bg-slate-50 border-t flex items-center justify-between text-xs text-slate-500 shrink-0">
-              <div>
-                <kbd className="bg-slate-200 px-2 py-1 rounded">↑ ↓</kbd> Navigate •
-                <kbd className="bg-slate-200 px-2 py-1 rounded ml-2">Enter</kbd> Add •
-                <kbd className="bg-slate-200 px-2 py-1 rounded ml-2">Esc</kbd> Close
-              </div>
-              <div>{inventoryItems.length} items found</div>
-            </div>
-          </div>
-        </div>
-      )}
+      <InventoryModal
+        showInventoryModal={showInventoryModal}
+        setShowInventoryModal={setShowInventoryModal}
+        inventorySearch={inventorySearch}
+        setInventorySearch={setInventorySearch}
+        selectedCategory={selectedCategory}
+        setSelectedCategory={setSelectedCategory}
+        inventoryItems={inventoryItems}
+        isLoading={isLoading}
+        selectedInventoryIndex={selectedInventoryIndex}
+        setSelectedInventoryIndex={setSelectedInventoryIndex}
+        setCurrentPage={setCurrentPage}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        inventorySearchRef={inventorySearchRef}
+        selectedItemRef={selectedItemRef}
+        handleModalKeyDown={handleModalKeyDown}
+        addItemToSelected={addItemToSelected}
+        selectedItems={selectedItems}
+        removeItemFromSelected={removeItemFromSelected}
+        updateSelectedItemQuantity={updateSelectedItemQuantity}
+        addSelectedToCart={addSelectedToCart}
+        CATEGORIES={CATEGORIES}
+      />
     </div>
   );
 }

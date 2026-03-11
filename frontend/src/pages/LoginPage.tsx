@@ -213,7 +213,7 @@ function LoginPage() {
       if (err.message.includes("401") || err.message.includes("Invalid")) {
         message = "Invalid username or password";
       } else if (err.message.includes("fetch") || err.message.includes("network")) {
-        message = "Cannot reach server. Is the backend running?";
+        message = "Cannot reach server. Login online first for offline access.";
       } else if (err.message) {
         message = err.message;
       }

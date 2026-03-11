@@ -32,5 +32,6 @@ export function isAuthenticated(): boolean {
 export function logout() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(ROLE_KEY);
+  localStorage.removeItem("cashier_username");
   window.location.href = "/";
 }

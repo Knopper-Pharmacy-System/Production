@@ -1,5 +1,34 @@
-import React from 'react';
-import { Search, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+import { db } from '../api/db';
+
+function EditablePriceCell({ itemId, price, updateCartItemPrice }: { itemId: number; price: number; updateCartItemPrice: (id: number, price: number) => void }) {
+  const [raw, setRaw] = useState(price === 0 ? '' : String(price));
+
+  useEffect(() => {
+    setRaw(price === 0 ? '' : String(price));
+  }, [price]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={raw}
+      onChange={e => {
+        const v = e.target.value;
+        if (/^\d*\.?\d*$/.test(v)) setRaw(v);
+      }}
+      onBlur={() => {
+        const parsed = parseFloat(raw);
+        const finalPrice = isNaN(parsed) ? 0 : parsed;
+        setRaw(finalPrice === 0 ? '' : String(finalPrice));
+        updateCartItemPrice(itemId, finalPrice);
+      }}
+      placeholder="0.00"
+      className="w-full text-center font-bold text-orange-600 border-b-2 border-orange-400 bg-transparent outline-none"
+    />
+  );
+}
 
 interface CartItem {
   id: number;
@@ -9,15 +38,22 @@ interface CartItem {
   total: number;
 }
 
+interface SuggestionItem {
+  id: number;
+  name: string;
+  batch: string;
+  price: number;
+  stock: number;
+}
+
 interface CartDisplayProps {
   cartItems: CartItem[];
   removeItemFromCart: (id: number) => void;
   currentItemDescription: string;
   setCurrentItemDescription: (desc: string) => void;
-  currentQuantity: number;
-  setCurrentQuantity: (qty: number) => void;
-  currentPrice: string;
-  setCurrentPrice: (price: string) => void;
+  discountTypeLabel: string;
+  discountTypeIndex: number;
+  updateCartItemPrice: (id: number, price: number) => void;
   handleKeyPress: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   terminalId: string;
   invoiceNo: string;
@@ -29,6 +65,8 @@ interface CartDisplayProps {
   setCurrentPage: (page: number) => void;
   setHasMore: (hasMore: boolean) => void;
   setShowInventoryModal: (show: boolean) => void;
+  barcodeInputRef: React.RefObject<HTMLInputElement | null>;
+  onAddToCart: (item: SuggestionItem) => void;
 }
 
 const CartDisplay: React.FC<CartDisplayProps> = ({
@@ -36,10 +74,9 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   removeItemFromCart,
   currentItemDescription,
   setCurrentItemDescription,
-  currentQuantity,
-  setCurrentQuantity,
-  currentPrice,
-  setCurrentPrice,
+  discountTypeLabel,
+  discountTypeIndex,
+  updateCartItemPrice,
   handleKeyPress,
   terminalId,
   invoiceNo,
@@ -51,18 +88,96 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   setCurrentPage,
   setHasMore,
   setShowInventoryModal,
+  barcodeInputRef,
+  onAddToCart,
 }) => {
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const [isSearching, setIsSearching] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Debounced inline search
+  useEffect(() => {
+    const query = currentItemDescription.trim();
+    if (!query) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const q = query.toLowerCase();
+        const results = await db.inventory
+          .filter(item => {
+            const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
+            const batch = (item.batch_number || item.batch || '').toLowerCase();
+            return name.includes(q) || batch.includes(q);
+          })
+          .limit(8)
+          .toArray();
+        setSuggestions(results.map(item => ({
+          id: item.id!,
+          name: item.product_name_official || item.product_name || item.name || 'Unnamed',
+          batch: item.batch_number || item.batch || '—',
+          price: item.price_regular || item.price || 0,
+          stock: item.quantity_on_hand || item.quantity || 0,
+        })));
+        setShowSuggestions(true);
+        setHighlightIdx(0);
+      } catch (err) {
+        console.error('Suggestion search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [currentItemDescription]);
+
+  const selectSuggestion = useCallback((item: SuggestionItem) => {
+    onAddToCart(item);
+    setCurrentItemDescription('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }, [onAddToCart, setCurrentItemDescription]);
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setHighlightIdx(i => Math.min(i + 1, suggestions.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setHighlightIdx(i => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        selectSuggestion(suggestions[highlightIdx]);
+        return;
+      }
+    }
+    if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      return;
+    }
+    handleKeyPress(e);
+  };
+
   return (
     <div className="flex flex-col gap-6 h-full overflow-hidden">
       {/* IDs */}
-      <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-md p-4 grid grid-cols-3 gap-6 shrink-0">
+      <div className="bg-white rounded-xl shadow-lg border border-slate-300 p-4 grid grid-cols-3 gap-6 shrink-0">
         <div><span className="text-slate-600 text-sm">Term ID:</span> <span className="font-bold">{terminalId}</span></div>
         <div><span className="text-slate-600 text-sm">Invoice No.:</span> <span className="font-bold">{invoiceNo}</span></div>
         <div><span className="text-slate-600 text-sm">Trans No.:</span> <span className="font-bold">{transNo}</span></div>
       </div>
 
       {/* Cart Table */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-xl border border-slate-200">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-xl border border-slate-300">
         <div className="shrink-0 border-b border-slate-100 bg-slate-50">
           <div className="grid grid-cols-[60px_1fr_100px_140px_160px] text-[11px] font-black uppercase tracking-wider text-slate-500 p-4">
             <span>#</span>
@@ -74,11 +189,15 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
         </div>
         <div className="flex-1 overflow-y-auto">
           {cartItems.map((item, idx) => (
-            <div key={item.id} className="group grid grid-cols-[60px_1fr_100px_140px_160px] border-b border-slate-50 p-4 items-center hover:bg-blue-50/50">
+            <div key={item.id} className="group grid grid-cols-[60px_1fr_100px_140px_160px] border-b border-slate-100 p-4 items-center hover:bg-blue-50/50">
               <span className="text-sm font-bold text-slate-400">{idx + 1}</span>
               <span className="font-semibold text-slate-800">{item.description}</span>
               <span className="text-center font-bold text-slate-700">{item.quantity}</span>
-              <span className="text-center text-slate-600">{item.price.toFixed(2)}</span>
+              {discountTypeIndex === 3 ? (
+                <EditablePriceCell itemId={item.id} price={item.price} updateCartItemPrice={updateCartItemPrice} />
+              ) : (
+                <span className="text-center text-slate-600">{item.price.toFixed(2)}</span>
+              )}
               <div className="flex justify-end items-center gap-4 font-bold text-[#062d8c]">
                 <span>{item.total.toFixed(2)}</span>
                 <button onClick={() => removeItemFromCart(item.id)} className="p-1.5 text-red-400 hover:text-red-600">
@@ -91,48 +210,76 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
+      <div className="shrink-0 rounded-2xl bg-white p-6 shadow-xl border border-slate-300">
         <div className="grid grid-cols-[1fr_100px_140px_auto] gap-4 items-end">
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Description</label>
             <input
+              ref={barcodeInputRef}
               type="text"
               value={currentItemDescription}
               onChange={e => setCurrentItemDescription(e.target.value)}
-              onKeyDown={handleKeyPress}
+              onKeyDown={handleInputKeyDown}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onFocus={() => { if (currentItemDescription.trim() && suggestions.length > 0) setShowSuggestions(true); }}
               placeholder="Scan or type item..."
               className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 outline-none focus:border-blue-500"
+              autoComplete="off"
+            />
+            {/* Inline search dropdown */}
+            {showSuggestions && (
+              <div
+                ref={dropdownRef}
+                className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+              >
+                {isSearching && (
+                  <div className="px-4 py-3 text-xs text-slate-400">Searching…</div>
+                )}
+                {!isSearching && suggestions.length === 0 && (
+                  <div className="px-4 py-3 text-xs text-slate-400">No items found</div>
+                )}
+                {!isSearching && suggestions.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    onMouseDown={() => selectSuggestion(item)}
+                    onMouseEnter={() => setHighlightIdx(idx)}
+                    className={`flex items-center justify-between px-4 py-3 cursor-pointer border-b border-slate-50 last:border-0 ${
+                      idx === highlightIdx ? 'bg-blue-50' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-800 text-sm truncate">{item.name}</p>
+                      <p className="text-xs text-slate-400">Batch: {item.batch} &bull; Stock: {item.stock}</p>
+                    </div>
+                    <span className="ml-4 shrink-0 font-black text-[#062d8c] text-sm">₱{item.price.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase text-slate-400 text-center block">Total Qty</label>
+            <input
+              type="number"
+              value={cartItems.reduce((s, i) => s + i.quantity, 0)}
+              readOnly
+              className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 text-center font-bold outline-none cursor-default"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-slate-400 text-center block">Qty</label>
+            <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Discount Type (Ctrl+F3)</label>
             <input
-              type="number"
-              value={currentQuantity}
-              onChange={e => setCurrentQuantity(Math.max(1, Number(e.target.value) || 1))}
-              className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 text-center font-bold outline-none focus:border-blue-500"
+              type="text"
+              value={discountTypeLabel}
+              readOnly
+              className={`w-full rounded-xl border-2 p-3 font-bold outline-none cursor-default text-center ${
+                discountTypeIndex === 0 ? 'bg-slate-50 border-slate-200 text-slate-700' :
+                discountTypeIndex === 1 ? 'bg-green-50 border-green-300 text-green-700' :
+                discountTypeIndex === 2 ? 'bg-blue-50 border-blue-300 text-blue-700' :
+                'bg-orange-50 border-orange-300 text-orange-700'
+              }`}
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-slate-400 ml-1">Price</label>
-            <input
-              type="number"
-              value={currentPrice}
-              onChange={e => setCurrentPrice(e.target.value)}
-              placeholder="0.00"
-              className="w-full rounded-xl border-2 border-slate-100 bg-slate-50 p-3 font-bold outline-none focus:border-blue-500"
-            />
-          </div>
-          <button
-            onClick={() => {/* manual add if needed */}}
-            className="bg-[#062d8c] text-white px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#041848]"
-          >
-            <Plus className="h-5 w-5" /> ADD
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between mt-4 text-slate-500">
-          <span className="text-sm font-semibold">Next item #{cartItems.length + 1}</span>
           <button
             onClick={() => {
               setInventorySearch("");
@@ -143,11 +290,12 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
               setHasMore(true);
               setShowInventoryModal(true);
             }}
-            className="bg-white border-2 border-[#062d8c] text-[#062d8c] px-6 py-2 rounded-xl hover:bg-[#f0f4ff] font-semibold flex items-center gap-2"
+            className="bg-[#062d8c] text-white px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#041848]"
           >
-            <Search className="h-5 w-5" /> Inventory (F2)
+            <Plus className="h-5 w-5" /> ADD ITEM
           </button>
         </div>
+
       </div>
     </div>
   );

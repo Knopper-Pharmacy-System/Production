@@ -89,14 +89,14 @@ export default function AdminHeader({
 
         {/* Date/Time Card */}
         <div
-          className="flex items-center gap-4 px-5 py-3 rounded-2xl shrink-0"
+          className="flex items-center gap-4 px-5 py-3 rounded-2xl shrink-0 tabular-nums"
           style={{
             background: "rgba(0,20,69,0.7)",
             border: "1px solid rgba(255,255,255,0.2)",
             boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
           }}
         >
-          <div className="flex flex-col">
+          <div className="flex flex-col w-36">
             <span
               className="font-semibold tracking-widest uppercase"
               style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
@@ -114,7 +114,7 @@ export default function AdminHeader({
             className="w-px h-10"
             style={{ background: "rgba(255,255,255,0.2)" }}
           />
-          <div className="flex flex-col">
+          <div className="flex flex-col w-28">
             <span
               className="font-semibold tracking-widest uppercase"
               style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}

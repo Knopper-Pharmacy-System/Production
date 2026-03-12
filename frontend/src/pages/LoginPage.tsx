@@ -232,7 +232,7 @@ function LoginPage() {
 
   return (
     <div
-      className="bg-gradient-to-b from-[#062d8c] from-[59%] to-[#3266e6] min-h-screen w-full flex flex-col overflow-x-hidden"
+      className="bg-linear-to-b from-[#062d8c] from-59% to-[#3266e6] min-h-screen w-full flex flex-col overflow-x-hidden"
       data-name="newest login"
     >
       <style>{`
@@ -291,7 +291,7 @@ function LoginPage() {
       <div className="flex-1 flex flex-col px-4 sm:px-6 lg:px-12 min-h-0">
         <main className="flex flex-col lg:flex-row flex-1 gap-6 py-6 min-h-0">
           <div className="hidden lg:flex lg:w-2/5 items-center justify-center shrink-0">
-            <img alt="Logo Outline" className="w-full max-w-[420px] h-auto object-contain pointer-events-none" src={logoOutline} />
+            <img alt="Logo Outline" className="w-full max-w-105 h-auto object-contain pointer-events-none" src={logoOutline} />
           </div>
 
           <div className="flex flex-col gap-5 flex-1 justify-center">
@@ -342,7 +342,7 @@ function LoginPage() {
             </div>
 
             <div className="relative bg-[#001445]/50 rounded-3xl border border-white/20 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,20,69,0.6)] ring-1 ring-white/10 p-6 sm:p-8 lg:p-10 flex flex-col sm:flex-row gap-6">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none rounded-3xl" />
+              <div className="absolute inset-0 bg-linear-to-br from-white/10 to-transparent pointer-events-none rounded-3xl" />
               <div className="flex-1 flex flex-col gap-1">
                 <span className="font-semibold text-sm tracking-wider text-[rgba(190,140,0,0.85)]">CURRENT DATE</span>
                 <span className="font-semibold text-[#c9d9ff] text-xl sm:text-2xl lg:text-3xl">{currentDateTime.date}</span>

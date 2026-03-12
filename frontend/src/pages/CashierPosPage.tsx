@@ -832,13 +832,13 @@ function CashierPosPage() {
 
   return (
     <div className="h-screen w-full overflow-hidden bg-slate-300 p-6 font-sans">
-      <div className={`mx-auto grid h-full max-w-[1800px] grid-cols-[1fr_400px] gap-6 overflow-hidden transition ${(isDrawerOpen || isEditingOpeningBalance || isClosingBalanceOpen) ? "pointer-events-none blur-sm" : ""}`}>
+      <div className={`mx-auto grid h-full max-w-450 grid-cols-[1fr_400px] gap-6 overflow-hidden transition ${(isDrawerOpen || isEditingOpeningBalance || isClosingBalanceOpen) ? "pointer-events-none blur-sm" : ""}`}>
 
         {/* LEFT - Transaction Area */}
         <div className="flex flex-col gap-6 overflow-hidden h-full">
 
           {/* Header */}
-          <header className="flex shrink-0 items-center justify-between rounded-2xl bg-gradient-to-r from-[#041848] to-[#062d8c] p-5 shadow-lg">
+          <header className="flex shrink-0 items-center justify-between rounded-2xl bg-linear-to-r from-[#041848] to-[#062d8c] p-5 shadow-lg">
             <img src={bannerLogo} alt="Logo" className="h-10 w-auto" />
             <div className="flex items-center gap-6">
               <div className="text-right text-white">
@@ -930,7 +930,7 @@ function CashierPosPage() {
           </div>
 
           {/* Branding */}
-          <div className="flex-1 min-h-[120px] relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#041848] to-[#3266e6] shadow-xl flex flex-col items-center justify-center p-6">
+          <div className="flex-1 min-h-30 relative overflow-hidden rounded-3xl bg-linear-to-br from-[#041848] to-[#3266e6] shadow-xl flex flex-col items-center justify-center p-6">
             <img src={logoOutline} alt="Logo" className="h-20 w-20 opacity-30 mb-4" />
             <p className="text-2xl font-black text-white tracking-tighter">KNOPPER <span className="text-blue-400">POS</span></p>
             <p className="text-[10px] uppercase text-blue-200 tracking-[0.4em] mt-1">Pharmacy Edition</p>
@@ -1031,7 +1031,7 @@ function CashierPosPage() {
       {/* Receipt Confirmation */}
       {isReceiptConfirmOpen && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/70 p-4"
           tabIndex={-1}
           ref={el => el?.focus()}
           onKeyDown={e => {
@@ -1069,7 +1069,7 @@ function CashierPosPage() {
       )}
 
       {isKeybindHelpOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
             <div className="border-b border-slate-200 p-6">
               <h3 className="text-2xl font-black text-slate-900">Keyboard Shortcuts</h3>

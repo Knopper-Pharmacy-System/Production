@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
@@ -158,9 +159,20 @@ export default function AdminSidebar({
   onNavigate,
 }: AdminSidebarProps) {
   const [dashboardExpanded, setDashboardExpanded] = useState(true);
+  const navigate = useNavigate();
+
+  const NAV_ROUTES: Record<string, string> = {
+    Dashboard: "/admin",
+    Overview: "/admin",
+    Users: "/admin/users",
+  };
 
   const handleNav = (item: string) => {
     onNavigate?.(item);
+    if (NAV_ROUTES[item]) {
+      navigate(NAV_ROUTES[item]);
+      onClose();
+    }
   };
 
   return (

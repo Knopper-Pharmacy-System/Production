@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import LoginPage from "./pages/LoginPage";
 import CashierPosPage from "./pages/CashierPosPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage.tsx";
+import UsersPage from "./pages/UsersPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -79,6 +80,14 @@ function App() {
           element={
             <ProtectedRoute expectedRole="cashier">
               <CashierPosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <UsersPage />
             </ProtectedRoute>
           }
         />

@@ -2,7 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 import LoginPage from "./pages/LoginPage";
 import CashierPosPage from "./pages/CashierPosPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage.tsx";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 

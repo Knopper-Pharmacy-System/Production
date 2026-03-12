@@ -265,17 +265,18 @@ export default function AdminDashboardPage() {
               className="flex flex-col gap-1 flex-1"
               style={{ minWidth: "200px" }}
             >
-              <div className="relative inline-block">
+              <div
+                className="relative bg-[#f4f4f4] flex items-center gap-2 h-10 px-4 rounded-2xl cursor-pointer w-full max-w-xs transition-shadow"
+                style={{ boxShadow: "0 0 40px rgba(3,31,99,0.25)" }}
+              >
+                <p className="font-semibold text-sm truncate flex-1 text-center text-[#103182]">
+                  {selectedBranch}
+                </p>
+                <ChevronDown size={16} className="text-[#103182] shrink-0" />
                 <select
                   value={selectedBranch}
                   onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="appearance-none text-sm font-semibold px-3 py-1.5 pr-7 rounded-lg border cursor-pointer focus:outline-none"
-                  style={{
-                    background: "#f0f0f0",
-                    color: "#103182",
-                    borderColor: "#b3b1b1",
-                    boxShadow: "0 0 54px rgba(3,31,99,0.75)",
-                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
                 >
                   {BRANCHES.map((b) => (
                     <option key={b.value} value={b.value}>
@@ -283,11 +284,6 @@ export default function AdminDashboardPage() {
                     </option>
                   ))}
                 </select>
-                <ChevronDown
-                  size={14}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
-                  style={{ color: "#062d8c" }}
-                />
               </div>
               <h1
                 className="font-bold text-2xl tracking-wide leading-none"

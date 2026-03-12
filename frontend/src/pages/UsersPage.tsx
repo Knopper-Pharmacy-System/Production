@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import bannerLogo from "../assets/banner_logo.png";
 import AdminSidebar from "../components/AdminSidebar";
+import CreateUserModal from "../components/CreateUserModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -170,6 +171,7 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState<"All" | Status>("All");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
+  const [createModalOpen, setCreateModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -252,6 +254,11 @@ export default function UsersPage() {
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         activeItem="Users"
+      />
+
+      <CreateUserModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
       />
 
       <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-5">
@@ -666,6 +673,7 @@ export default function UsersPage() {
 
               {/* Add User */}
               <button
+                onClick={() => setCreateModalOpen(true)}
                 className="flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-bold transition-opacity hover:opacity-90"
                 style={{
                   background: "#1133f2",

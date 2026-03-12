@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Package,
   ChevronDown,
-  Circle,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import bannerLogo from "../assets/banner_logo.png";
 import AdminSidebar from "../components/AdminSidebar";
@@ -118,6 +119,17 @@ export default function AdminDashboardPage() {
   const [trendTab, setTrendTab] = useState<TrendTab>("Week");
   const [selectedBranch, setSelectedBranch] = useState<string>("BMC MAIN");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+
+  useEffect(() => {
+    const handleStatus = () => setIsOnline(navigator.onLine);
+    window.addEventListener("online", handleStatus);
+    window.addEventListener("offline", handleStatus);
+    return () => {
+      window.removeEventListener("online", handleStatus);
+      window.removeEventListener("offline", handleStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -305,19 +317,18 @@ export default function AdminDashboardPage() {
                 STATUS:
               </span>
               <div
-                className="flex items-center gap-2 px-4 py-2 rounded-2xl"
-                style={{
-                  background: "#0c8628",
-                  border: "1px solid #062d8c",
-                  boxShadow: "0 0 40px rgba(3,31,99,0.1)",
-                }}
+                className={`relative flex items-center gap-2 h-10 px-4 rounded-2xl ${
+                  isOnline ? "bg-[#0c8628]" : "bg-[#cc5500]"
+                }`}
               >
-                <Circle size={10} fill="#acf9be" style={{ color: "#acf9be" }} />
-                <span
-                  className="text-sm font-semibold tracking-wider"
-                  style={{ color: "#acf9be" }}
-                >
-                  ONLINE
+                <div className="absolute inset-0 border border-[#062d8c] pointer-events-none rounded-2xl shadow-[0_0_40px_rgba(3,31,99,0.1)]" />
+                {isOnline ? (
+                  <Wifi size={16} className="text-[#acf9be]" />
+                ) : (
+                  <WifiOff size={16} className="text-white" />
+                )}
+                <span className="text-sm font-semibold tracking-wider text-[#acf9be] whitespace-nowrap">
+                  {isOnline ? "ONLINE" : "OFFLINE"}
                 </span>
               </div>
               <button

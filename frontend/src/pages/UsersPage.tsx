@@ -230,6 +230,16 @@ export default function UsersPage() {
           isOnline={isOnline}
         />
 
+        {/* ── User Management Bar ──────────────────────────────────────────── */}
+        <div className="flex items-center justify-between">
+          <h2
+            className="font-bold text-xl tracking-wide"
+            style={{ color: "rgba(193,227,255,0.9)" }}
+          >
+            User Management
+          </h2>
+        </div>
+
         {/* ── KPI Cards ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total Users */}

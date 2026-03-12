@@ -1,4 +1,4 @@
-import { Menu, Bell, ChevronDown, Wifi, WifiOff } from "lucide-react";
+import { Menu, Bell, Wifi, WifiOff } from "lucide-react";
 import bannerLogo from "../assets/banner_logo.png";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -6,28 +6,8 @@ import bannerLogo from "../assets/banner_logo.png";
 export interface AdminHeaderProps {
   onMenuClick: () => void;
   currentTime: Date;
-  selectedBranch: string;
-  onBranchChange: (branch: string) => void;
   isOnline: boolean;
-  title?: string;
 }
-
-// ─── Constants ─────────────────────────────────────────────────────────────────
-
-const BRANCHES = [
-  {
-    value: "BMC MAIN",
-    address: "#6A J. Miranda Ave., Concepcion Pequeña, Naga City",
-  },
-  {
-    value: "DIVERSION BRANCH",
-    address: "Roxas Avenue, Diversion Road, Triangulo, Naga City",
-  },
-  {
-    value: "PANGANIBAN BRANCH",
-    address: "Door 11 & 12, Pavilion 7, Panganiban Drive, Naga City",
-  },
-];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -51,14 +31,8 @@ const formatTime = (date: Date): string =>
 export default function AdminHeader({
   onMenuClick,
   currentTime,
-  selectedBranch,
-  onBranchChange,
   isOnline,
-  title,
 }: AdminHeaderProps) {
-  const branchAddress =
-    BRANCHES.find((b) => b.value === selectedBranch)?.address ?? "";
-
   return (
     <div
       className="rounded-2xl px-5 py-4"
@@ -68,9 +42,9 @@ export default function AdminHeader({
         boxShadow: "0 0 20px rgba(0,0,0,0.25)",
       }}
     >
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex items-center gap-4">
         {/* Left: Menu + Logo */}
-        <div className="flex items-center gap-3">
+        <div className="flex-1 flex items-center gap-3">
           <button
             onClick={onMenuClick}
             className="p-1"
@@ -156,44 +130,8 @@ export default function AdminHeader({
           </div>
         </div>
 
-        {/* Branch + Title */}
-        <div
-          className="flex flex-col gap-1 flex-1"
-          style={{ minWidth: "200px" }}
-        >
-          <div
-            className="relative bg-[#f4f4f4] flex items-center gap-2 h-10 px-4 rounded-2xl cursor-pointer w-full max-w-xs transition-shadow"
-            style={{ boxShadow: "0 0 40px rgba(3,31,99,0.25)" }}
-          >
-            <p className="font-semibold text-sm truncate flex-1 text-center text-[#103182]">
-              {selectedBranch}
-            </p>
-            <ChevronDown size={16} className="text-[#103182] shrink-0" />
-            <select
-              value={selectedBranch}
-              onChange={(e) => onBranchChange(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            >
-              {BRANCHES.map((b) => (
-                <option key={b.value} value={b.value}>
-                  {b.value}
-                </option>
-              ))}
-            </select>
-          </div>
-          <h1
-            className="font-bold text-2xl tracking-wide leading-none"
-            style={{ color: "rgba(193,227,255,0.9)" }}
-          >
-            {title ?? selectedBranch}
-          </h1>
-          <p className="text-xs" style={{ color: "#b9e0ff" }}>
-            {branchAddress}
-          </p>
-        </div>
-
         {/* Right: Status + Bell */}
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex-1 flex items-center gap-3 justify-end">
           <span
             className="text-sm font-semibold"
             style={{ color: "rgba(255,255,255,0.6)" }}

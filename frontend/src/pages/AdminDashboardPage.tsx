@@ -14,7 +14,13 @@ import {
   Pie,
   LabelList,
 } from "recharts";
-import { AlertCircle, Clock, TrendingUp, Package } from "lucide-react";
+import {
+  AlertCircle,
+  Clock,
+  TrendingUp,
+  Package,
+  ChevronDown,
+} from "lucide-react";
 import AdminSidebar from "../components/AdminSidebar";
 import AdminHeader from "../components/AdminHeader";
 
@@ -85,6 +91,21 @@ const criticalStockItems: StockItem[] = [
   { name: "AICE DREAM 90ML", value: 33.35 },
 ];
 
+const BRANCHES = [
+  {
+    value: "BMC MAIN",
+    address: "#6A J. Miranda Ave., Concepcion Pequeña, Naga City",
+  },
+  {
+    value: "DIVERSION BRANCH",
+    address: "Roxas Avenue, Diversion Road, Triangulo, Naga City",
+  },
+  {
+    value: "PANGANIBAN BRANCH",
+    address: "Door 11 & 12, Pavilion 7, Panganiban Drive, Naga City",
+  },
+];
+
 const TREND_TABS: TrendTab[] = ["Week", "Month", "Year"];
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
@@ -136,10 +157,41 @@ export default function AdminDashboardPage() {
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           currentTime={currentTime}
-          selectedBranch={selectedBranch}
-          onBranchChange={setSelectedBranch}
           isOnline={isOnline}
         />
+
+        {/* ── Overview Bar ─────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between">
+          <h2
+            className="font-bold text-xl tracking-wide"
+            style={{ color: "rgba(193,227,255,0.9)" }}
+          >
+            Overview
+          </h2>
+          <div
+            className="relative bg-[#f4f4f4] flex items-center gap-2 h-10 px-4 rounded-2xl cursor-pointer transition-shadow"
+            style={{
+              minWidth: "200px",
+              boxShadow: "0 0 40px rgba(3,31,99,0.25)",
+            }}
+          >
+            <p className="font-semibold text-sm truncate flex-1 text-center text-[#103182]">
+              {selectedBranch}
+            </p>
+            <ChevronDown size={16} className="text-[#103182] shrink-0" />
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+            >
+              {BRANCHES.map((b) => (
+                <option key={b.value} value={b.value}>
+                  {b.value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {/* ── KPI Cards ────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

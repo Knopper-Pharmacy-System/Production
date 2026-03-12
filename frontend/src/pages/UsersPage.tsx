@@ -142,7 +142,6 @@ const STATUS_COLORS: Record<Status, { bg: string; text: string; dot: string }> =
 
 export default function UsersPage() {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  const [selectedBranch, setSelectedBranch] = useState<string>("BMC MAIN");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
@@ -228,10 +227,7 @@ export default function UsersPage() {
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           currentTime={currentTime}
-          selectedBranch={selectedBranch}
-          onBranchChange={setSelectedBranch}
           isOnline={isOnline}
-          title="User Management"
         />
 
         {/* ── KPI Cards ────────────────────────────────────────────────────── */}

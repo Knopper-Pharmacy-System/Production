@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 import LoginPage from "./pages/LoginPage";
 import CashierPosPage from "./pages/CashierPosPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -69,7 +70,7 @@ function App() {
           path="/admin"
           element={
             <ProtectedRoute expectedRole="admin">
-              <RolePage title="Admin Interface" />
+              <AdminDashboardPage />
             </ProtectedRoute>
           }
         />

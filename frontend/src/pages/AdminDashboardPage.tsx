@@ -152,7 +152,7 @@ export default function AdminDashboardPage() {
       />
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-5">
+      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* ── Header Card ──────────────────────────────────────────────────── */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
@@ -463,7 +463,7 @@ export default function AdminDashboardPage() {
                     borderRadius: 8,
                     fontSize: 12,
                   }}
-                  formatter={(val) => [
+                  formatter={(val: unknown) => [
                     `₱${Number(val).toLocaleString()}`,
                     "Sales",
                   ]}
@@ -594,7 +594,7 @@ export default function AdminDashboardPage() {
                   borderRadius: 8,
                   fontSize: 12,
                 }}
-                formatter={(val) => [Number(val).toFixed(2), "Stock Level"]}
+                formatter={(val: unknown) => [Number(val).toFixed(2), "Stock Level"]}
               />
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 <LabelList

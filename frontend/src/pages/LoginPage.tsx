@@ -47,7 +47,7 @@ const roleHomePath = (role: string) => {
     case "admin":
       return "/admin";
     case "cashier":
-      return "/cashier";
+      return "/pos";
     case "staff":
       return "/staff";
     case "omvb_manager":
@@ -196,7 +196,7 @@ function LoginPage() {
       console.log("[LOGIN] Success - received:", { role: data.role });
 
       // Save token and role
-      authLogin(data.access_token, data.role);
+      authLogin(data.access_token, data.role, credentials.password.trim());
       localStorage.setItem("cashier_username", credentials.username.trim());
 
       const destination = roleHomePath(data.role);

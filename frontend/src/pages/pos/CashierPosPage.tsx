@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Calendar,
   Clock,
@@ -9,16 +9,17 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import logoOutline from "../assets/logo_outline.png";
-import bannerLogo from "../assets/banner_logo.png";
-import { closeShiftWithBalance, db, getActiveShift, startShift, updateActiveShiftOpeningBalance, verifyManagerPin } from "../api/db"; // Enable Dexie for offline support
-import { logout } from "../hooks/useAuth";
-import InventoryModal from "../components/InventoryModal";
-import CartDisplay from "../components/CartDisplay";
-import OpeningBalanceModal from "../components/OpeningBalanceModal";
-import ManagerAuthModal from "../components/ManagerAuthModal";
-import ClosingBalanceModal from "../components/ClosingBalanceModal";
-import CheckoutModal from "../components/CheckoutModal";
+import logoOutline from "../../assets/logo_outline.png";
+import bannerLogo from "../../assets/banner_logo.png";
+import { closeShiftWithBalance, db, getActiveShift, startShift, updateActiveShiftOpeningBalance, verifyManagerPin } from "../../features/pos/api/db"; // Enable Dexie for offline support
+import { getSessionLoginPassword, getTerminalLockState, logout, setTerminalLockState } from "../../hooks/useAuth";
+import InventoryModal from "../../components/pos/InventoryModal";
+import CartDisplay from "../../components/pos/CartDisplay";
+import OpeningBalanceModal from "../../components/pos/OpeningBalanceModal";
+import ManagerAuthModal from "../../components/pos/ManagerAuthModal";
+import ClosingBalanceModal from "../../components/pos/ClosingBalanceModal";
+import CheckoutModal from "../../components/pos/CheckoutModal";
+import TerminalLockModal from "../../components/pos/TerminalLockModal";
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
@@ -27,7 +28,7 @@ const CATEGORIES = [
   { value: "", label: "All" },
   { value: "MEDICINE", label: "Medicine" },
   { value: "GROCERY", label: "Grocery" },
-  { value: "EQUIPMENT", label: "Equipment" },
+  { value: "MEDICAL SUPPLIES", label: "Medical Supplies" },
 ];
 
 const DISCOUNT_TYPES = [
@@ -38,6 +39,7 @@ const DISCOUNT_TYPES = [
 ];
 
 const DISCOUNT_RATES = [0, 0.20, 0.10, 0];
+const ITEMS_PER_PAGE = 50;
 
 type CartItem = {
   id: number;
@@ -51,7 +53,7 @@ type CartItem = {
 type SelectedItem = {
   id: number;
   name: string;
-  batch: string;
+  barcode: string;
   price: number;
   quantity: number;
   total: number;
@@ -62,12 +64,36 @@ type InventoryItem = {
   id: number;              // inventory_id
   name: string;            // product_name_official
   productId?: number;
-  batch: string;           // batch_number
+  barcode: string;
   expiry: string | null;   // expiry_date as string
   quantity: number;        // quantity_on_hand
   price: number;           // price_regular
   gondola: string;         // gondola_code
 };
+
+const getInventoryBarcodeValue = (item: {
+  qr?: string;
+  qr_code?: string;
+  barcode?: string;
+  barcode_value?: string;
+  barcodeValue?: string;
+  product_barcode?: string;
+  primary_barcode?: string;
+  Barcode?: string;
+  BARCODE?: string;
+}) => item.barcode || item.barcode_value || item.barcodeValue || item.product_barcode || item.primary_barcode || item.Barcode || item.BARCODE || item.qr || item.qr_code || "—";
+
+const getInventoryDisplayName = (item: {
+  name?: string;
+  product_name?: string;
+  product_name_official?: string;
+}) => {
+  const rawName = item.product_name_official || item.product_name || item.name || "Unnamed Product";
+  return rawName.trim().toLowerCase() === "unnamed" ? "Unnamed Product" : rawName;
+};
+
+type InventoryNavigationEvent = Pick<globalThis.KeyboardEvent, "key" | "ctrlKey" | "preventDefault">;
+type StockFilter = "all-stock" | "in-stock" | "low-stock" | "out-of-stock";
 
 function CashierPosPage() {
   const [currentDate, setCurrentDate] = useState("");
@@ -94,6 +120,7 @@ function CashierPosPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [isCheckingShift, setIsCheckingShift] = useState(true);
   const [isEditingOpeningBalance, setIsEditingOpeningBalance] = useState(false);
   const [isOpeningShift, setIsOpeningShift] = useState(false);
   const [shiftId, setShiftId] = useState<string | null>(null);
@@ -115,25 +142,49 @@ function CashierPosPage() {
   const [isClosingShift, setIsClosingShift] = useState(false);
   const [isReceiptConfirmOpen, setIsReceiptConfirmOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isTerminalLocked, setIsTerminalLocked] = useState(() => getTerminalLockState());
+  const [isUnlockingTerminal, setIsUnlockingTerminal] = useState(false);
+  const [terminalLockError, setTerminalLockError] = useState<string | null>(null);
 
   // Inventory modal
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [inventorySearch, setInventorySearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("MEDICINE");
+  const [stockFilter, setStockFilter] = useState<StockFilter>("in-stock");
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [selectedInventoryIndex, setSelectedInventoryIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalInventoryCount, setTotalInventoryCount] = useState(0);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+  const lastAddToCartAtRef = useRef(0);
   const inventorySearchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemRef = useRef<HTMLDivElement | null>(null);
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
+  const totalInventoryPages = Math.max(1, Math.ceil(totalInventoryCount / ITEMS_PER_PAGE));
+  const hasPreviousInventoryPage = currentPage > 0;
+  const hasNextInventoryPage = currentPage + 1 < totalInventoryPages;
+
+  const applyStockFilter = (items: InventoryItem[]) => {
+    if (stockFilter === "all-stock") {
+      return items;
+    }
+
+    if (stockFilter === "in-stock") {
+      return items.filter((item) => item.quantity > 0);
+    }
+
+    if (stockFilter === "low-stock") {
+      return items.filter((item) => item.quantity > 0 && item.quantity <= 10);
+    }
+
+    return items.filter((item) => item.quantity <= 0);
+  };
 
   // Persist cart state to localStorage
   useEffect(() => { localStorage.setItem("pos_cartItems", JSON.stringify(cartItems)); }, [cartItems]);
   useEffect(() => { localStorage.setItem("pos_addOn", String(addOn)); }, [addOn]);
   useEffect(() => { localStorage.setItem("pos_discountTypeIndex", String(discountTypeIndex)); }, [discountTypeIndex]);
+  useEffect(() => { setTerminalLockState(isTerminalLocked); }, [isTerminalLocked]);
 
   // Check for active shift on mount.
   useEffect(() => {
@@ -152,6 +203,10 @@ function CashierPosPage() {
       } catch (err) {
         console.error("Failed to check shift status:", err);
         if (mounted) setIsDrawerOpen(true);
+      } finally {
+        if (mounted) {
+          setIsCheckingShift(false);
+        }
       }
     };
 
@@ -170,7 +225,11 @@ function CashierPosPage() {
 
         // Check if we already have items
         const count = await db.inventory.count();
-        if (count > 1000) return; // Assume already loaded
+        if (count > 1000) {
+          const sample = await db.inventory.limit(20).toArray();
+          const hasBarcodeData = sample.some((item) => Boolean(item.barcode || item.barcode_value || item.qr || item.qr_code));
+          if (hasBarcodeData) return;
+        }
 
         let allItems: any[] = [];
         let offset = 0;
@@ -222,29 +281,6 @@ function CashierPosPage() {
     };
   }, []);
 
-  // F2 key handler
-  useEffect(() => {
-    const handleKeyDown = (e: Event) => {
-      const keyboardEvent = e as unknown as KeyboardEvent;
-      if (isDrawerOpen) return;
-      if (keyboardEvent.key === "F2" || keyboardEvent.keyCode === 113) {
-        keyboardEvent.preventDefault();
-        if (!showInventoryModal) {
-          setInventorySearch("");
-          setSelectedCategory("");
-          setSelectedInventoryIndex(0);
-          setInventoryItems([]);
-          setCurrentPage(0);
-          setHasMore(true);
-          setShowInventoryModal(true);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showInventoryModal, isDrawerOpen]);
-
   // Clear selected items when modal closes
   useEffect(() => {
     if (!showInventoryModal) {
@@ -256,69 +292,77 @@ function CashierPosPage() {
   useEffect(() => {
     if (!showInventoryModal) return;
 
-    const loadInventory = async (append = false) => {
+    const loadInventory = async () => {
       const isSearch = inventorySearch.trim();
-      setLoadingMore(append);
-      if (!append) setIsLoading(true);
+      setIsLoading(true);
       setError(null);
 
       try {
-        let items: InventoryItem[] = [];
-        let newHasMore = true;
+        let allItems: InventoryItem[] = [];
 
         if (isSearch) {
-          // Search mode - fetch from server
+          // Search mode - always search local Dexie cache first for instant results
+          const searchTerm = inventorySearch.trim().toLowerCase();
+          let localItems = await db.inventory.filter(item => {
+            const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
+            const barcode = getInventoryBarcodeValue(item).toLowerCase();
+            return name.includes(searchTerm) || barcode.includes(searchTerm);
+          }).toArray();
+          if (selectedCategory) {
+            localItems = localItems.filter(item => item.category === selectedCategory);
+          }
+          allItems = localItems.map(item => ({
+            id: item.id!,
+            name: getInventoryDisplayName(item),
+            description: item.product_name_official || "",
+            productId: item.product_id || item.productId,
+            barcode: getInventoryBarcodeValue(item),
+            expiry: item.expiry_date || item.expiry || null,
+            quantity: item.quantity_on_hand ?? item.quantity ?? 0,
+            price: item.price_regular || item.price || 0,
+            gondola: item.gondola_code || item.gondola || "—",
+            category: item.category,
+          }));
+
+          // Optionally refresh results from server in background (no loading spinner)
           if (navigator.onLine) {
-            const token = localStorage.getItem("access_token");
-            if (!token) throw new Error("No authentication token found");
-
-            const res = await fetch(`${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}${selectedCategory ? `&category=${encodeURIComponent(selectedCategory)}` : ''}`, {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            });
-
-            if (!res.ok) {
-              throw new Error(`Failed to search inventory: ${res.status}`);
-            }
-
-            const data = await res.json();
-            items = data.items.map((item: any) => ({
-              id: item.inventory_id,
-              name: (item.product_name || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.product_name || "Unnamed Product"),
-              description: item.product_name_official || "",
-              productId: item.product_id,
-              batch: item.batch_number || "—",
-              expiry: item.expiry_date || null,
-              quantity: Number(item.quantity_on_hand) || 0,
-              price: Number(item.price) || 0,
-              gondola: item.gondola_code || "—",
-              category: item.category,
-            }));
-            newHasMore = false; // Search returns all
-          } else {
-            // Offline search
-            let localItems = await db.inventory
-              .where('name').startsWithIgnoreCase(inventorySearch)
-              .or('batch').startsWithIgnoreCase(inventorySearch)
-              .toArray();
-            if (selectedCategory) {
-              localItems = localItems.filter(item => item.category === selectedCategory);
-            }
-            items = localItems.map(item => ({
-              id: item.id!,
-              name: (item.name || item.product_name_official || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.name || item.product_name_official || "Unnamed Product"),
-              description: item.product_name_official || "",
-              productId: item.productId,
-              batch: item.batch || item.batch_number || "—",
-              expiry: item.expiry || item.expiry_date || null,
-              quantity: item.quantity || item.quantity_on_hand || 0,
-              price: item.price || item.price_regular || 0,
-              gondola: item.gondola || item.gondola_code || "—",
-            }));
-            newHasMore = false;
+            setTimeout(async () => {
+              try {
+                const token = localStorage.getItem("access_token");
+                if (!token) return;
+                const res = await fetch(
+                  `${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}${selectedCategory ? `&category=${encodeURIComponent(selectedCategory)}` : ''}`,
+                  { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+                );
+                if (res.ok) {
+                  const data = await res.json();
+                  // Upsert server results into local cache
+                  const serverItems = data.items ?? data ?? [];
+                  if (serverItems.length > 0) {
+                    await db.inventory.bulkPut(serverItems.map((i: any) => ({
+                      id: i.inventory_id,
+                      product_name_official: i.product_name_official,
+                      product_name: i.product_name,
+                      name: i.product_name_official || i.product_name,
+                      barcode: i.barcode || i.barcode_value || i.barcodeValue || i.product_barcode || i.primary_barcode || i.Barcode || i.BARCODE || i.qr || i.qr_code,
+                      qr_code: i.qr_code,
+                      qr: i.qr,
+                      barcode_value: i.barcode_value,
+                      product_id: i.product_id,
+                      batch_number: i.batch_number,
+                      expiry_date: i.expiry_date,
+                      quantity_on_hand: Number(i.quantity_on_hand) || 0,
+                      price_regular: Number(i.price) || 0,
+                      price: Number(i.price) || 0,
+                      gondola_code: i.gondola_code,
+                      category: i.category,
+                      sync_status: "synced",
+                      timestamp: Date.now(),
+                    })));
+                  }
+                }
+              } catch { /* silent background refresh */ }
+            }, 0);
           }
         } else {
           // Full inventory mode - load from cache first, then sync
@@ -328,18 +372,17 @@ function CashierPosPage() {
             if (selectedCategory) {
               localItems = localItems.filter(item => item.category === selectedCategory);
             }
-            items = localItems.slice(0, 50).map(item => ({
+            allItems = localItems.map(item => ({
               id: item.id!,
-              name: (item.product_name || item.name || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.product_name || item.name || "Unnamed Product"),
+              name: getInventoryDisplayName(item),
               description: item.product_name_official || "",
               productId: item.product_id || item.productId,
-              batch: item.batch_number || item.batch || "—",
+              barcode: getInventoryBarcodeValue(item),
               expiry: item.expiry_date || item.expiry || null,
               quantity: item.quantity_on_hand || item.quantity || 0,
               price: item.price_regular || item.price || 0,
               gondola: item.gondola_code || item.gondola || "—",
             }));
-            newHasMore = localItems.length > 50;
 
             // Then sync with server in background
             setTimeout(async () => {
@@ -366,51 +409,63 @@ function CashierPosPage() {
             if (selectedCategory) {
               localItems = localItems.filter(item => item.category === selectedCategory);
             }
-            items = localItems.slice(0, 50).map(item => ({
+            allItems = localItems.map(item => ({
               id: item.id!,
-              name: (item.product_name || item.name || "Unnamed Product").toLowerCase() === "unnamed" ? "Unnamed Product" : (item.product_name || item.name || "Unnamed Product"),
+              name: getInventoryDisplayName(item),
               description: item.product_name_official || "",
               productId: item.product_id || item.productId,
-              batch: item.batch_number || item.batch || "—",
+              barcode: getInventoryBarcodeValue(item),
               expiry: item.expiry_date || item.expiry || null,
               quantity: item.quantity_on_hand || item.quantity || 0,
               price: item.price_regular || item.price || 0,
               gondola: item.gondola_code || item.gondola || "—",
             }));
-            newHasMore = localItems.length > 50;
           }
         }
 
-        setInventoryItems(prev => append ? [...prev, ...items] : items);
-        setHasMore(newHasMore);
-        if (!append) setCurrentPage(0);
+        const sourceItems = isSearch ? allItems : applyStockFilter(allItems);
+        const pageStart = currentPage * ITEMS_PER_PAGE;
+        const pagedItems = sourceItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
+        setInventoryItems(pagedItems);
+        setTotalInventoryCount(sourceItems.length);
+        setSelectedInventoryIndex((previousIndex) => {
+          if (pagedItems.length === 0) return 0;
+          return Math.min(previousIndex, pagedItems.length - 1);
+        });
       } catch (err: any) {
         console.error("Inventory load error:", err);
         setError("Could not load inventory. " + (err.message || ""));
         setInventoryItems([]);
-        setHasMore(false);
+        setTotalInventoryCount(0);
       } finally {
         setIsLoading(false);
-        setLoadingMore(false);
       }
     };
 
-    const debounceTimer = setTimeout(() => loadInventory(), inventorySearch.trim() ? 300 : 0);
+    const debounceTimer = setTimeout(() => loadInventory(), 0);
     return () => clearTimeout(debounceTimer);
-  }, [showInventoryModal, inventorySearch, selectedCategory]);
+  }, [showInventoryModal, inventorySearch, selectedCategory, currentPage, stockFilter]);
 
   // Reset states when modal opens
   useEffect(() => {
     if (showInventoryModal) {
       setInventoryItems([]);
       setCurrentPage(0);
-      setHasMore(true);
+      setTotalInventoryCount(0);
       setInventorySearch("");
-      setSelectedCategory("");
+      setSelectedCategory("MEDICINE");
+      setStockFilter("in-stock");
       setSelectedInventoryIndex(0);
       setTimeout(() => inventorySearchRef.current?.focus(), 100);
     }
   }, [showInventoryModal]);
+
+  useEffect(() => {
+    if (currentPage !== 0) {
+      setCurrentPage(0);
+    }
+    setSelectedInventoryIndex(0);
+  }, [stockFilter]);
   useEffect(() => {
     selectedItemRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedInventoryIndex]);
@@ -419,12 +474,25 @@ function CashierPosPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent | Event) => {
       if (e instanceof KeyboardEvent) {
+        if (isTerminalLocked) return;
+
         if (e.key === "Tab") {
           const target = e.target as HTMLElement | null;
           const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
           if (!isTypingTarget) {
             e.preventDefault();
             setIsKeybindHelpOpen((prev) => !prev);
+          }
+          return;
+        }
+
+        if (e.key.toLowerCase() === "l") {
+          const target = e.target as HTMLElement | null;
+          const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
+          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isCheckoutOpen && !isReceiptConfirmOpen && !isKeybindHelpOpen) {
+            e.preventDefault();
+            setTerminalLockError(null);
+            setIsTerminalLocked(true);
           }
           return;
         }
@@ -459,7 +527,8 @@ function CashierPosPage() {
           return;
         }
 
-        if (e.ctrlKey && e.key === "F3") {
+        const isCtrlF3 = e.ctrlKey && (e.key === "F3" || e.code === "F3" || e.keyCode === 114);
+        if (isCtrlF3) {
           e.preventDefault();
           setDiscountTypeIndex(i => (i + 1) % DISCOUNT_TYPES.length);
           return;
@@ -475,14 +544,16 @@ function CashierPosPage() {
           return;
         }
 
-        if (e.key === "F2") {
+        const isF2 = e.key === "F2" || e.code === "F2" || e.keyCode === 113;
+        if (isF2) {
           e.preventDefault();
+          if (showInventoryModal) return;
           setInventorySearch("");
-          setSelectedCategory("");
+          setSelectedCategory("MEDICINE");
           setSelectedInventoryIndex(0);
           setInventoryItems([]);
           setCurrentPage(0);
-          setHasMore(true);
+          setTotalInventoryCount(0);
           setShowInventoryModal(true);
         } else if (e.key === "F12") {
           e.preventDefault();
@@ -492,42 +563,7 @@ function CashierPosPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [cartItems, isDrawerOpen, shiftId, isEditingOpeningBalance, showInventoryModal, isManagerModalOpen, isKeybindHelpOpen, isClosingBalanceOpen, discountTypeIndex]);
-
-  // Separate effect for loading more
-  useEffect(() => {
-    if (currentPage > 0 && showInventoryModal && !inventorySearch.trim()) {
-      const loadMore = async () => {
-        setLoadingMore(true);
-        try {
-          let localItems = await db.inventory.toArray();
-          if (selectedCategory) {
-            localItems = localItems.filter(item => item.category === selectedCategory);
-          }
-          const limit = 50;
-          const offset = currentPage * limit;
-          const items = localItems.slice(offset, offset + limit).map(item => ({
-            id: item.id!,
-            name: item.product_name_official || item.name || "Unnamed Product",
-            productId: item.product_id || item.productId,
-            batch: item.batch_number || item.batch || "—",
-            expiry: item.expiry_date || item.expiry || null,
-            quantity: item.quantity_on_hand || item.quantity || 0,
-            price: item.price_regular || item.price || 0,
-            gondola: item.gondola_code || item.gondola || "—",
-          }));
-
-          setInventoryItems(prev => [...prev, ...items]);
-          setHasMore(items.length === limit);
-        } catch (err) {
-          console.error("Load more error:", err);
-        } finally {
-          setLoadingMore(false);
-        }
-      };
-      loadMore();
-    }
-  }, [currentPage, showInventoryModal, inventorySearch, selectedCategory]);
+  }, [cartItems, isDrawerOpen, shiftId, isEditingOpeningBalance, showInventoryModal, isManagerModalOpen, isKeybindHelpOpen, isClosingBalanceOpen, discountTypeIndex, isTerminalLocked, isCheckoutOpen, isReceiptConfirmOpen]);
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.total, 0);
   const discount = subtotal * DISCOUNT_RATES[discountTypeIndex];
@@ -562,7 +598,7 @@ function CashierPosPage() {
       const newSelectedItem: SelectedItem = {
         id: item.id,
         name: item.name,
-        batch: item.batch,
+        barcode: item.barcode,
         price: item.price,
         quantity: currentQuantity,
         total: currentQuantity * item.price,
@@ -588,10 +624,20 @@ function CashierPosPage() {
   };
 
   const addSelectedToCart = () => {
+    const now = Date.now();
+    if (now - lastAddToCartAtRef.current < 250) {
+      return;
+    }
+    lastAddToCartAtRef.current = now;
+
+    if (selectedItems.length === 0) {
+      return;
+    }
+
     selectedItems.forEach(item => {
       const newCartItem: CartItem = {
         id: Date.now() + Math.random(), // Ensure unique IDs
-        description: `${item.name} (${item.batch})`,
+        description: `${item.barcode !== "—" ? `[${item.barcode}] ` : ""}${item.name}`,
         quantity: item.quantity,
         price: item.price,
         total: item.total,
@@ -612,10 +658,10 @@ function CashierPosPage() {
     setCartItems(prev => prev.filter(item => item.id !== id));
   };
 
-  const handleDirectAddToCart = useCallback((item: { id: number; name: string; batch: string; price: number; stock: number }) => {
+  const handleDirectAddToCart = useCallback((item: { id: number; name: string; barcode: string; price: number; stock: number }) => {
     const newCartItem: CartItem = {
       id: Date.now() + Math.random(),
-      description: `${item.name} (${item.batch})`,
+      description: `${item.barcode !== "—" ? `[${item.barcode}] ` : ""}${item.name}`,
       quantity: 1,
       price: item.price,
       total: item.price,
@@ -632,19 +678,37 @@ function CashierPosPage() {
     );
   };
 
-  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyPress = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       // You could implement manual entry logic here if needed
     }
   };
 
-  const handleModalKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleModalKeyDown = (e: InventoryNavigationEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedInventoryIndex(i => Math.min(i + 1, inventoryItems.length - 1));
+      if (inventoryItems.length === 0) return;
+      if (selectedInventoryIndex >= inventoryItems.length - 1) {
+        if (hasNextInventoryPage) {
+          setCurrentPage((page) => page + 1);
+          setSelectedInventoryIndex(0);
+        }
+        return;
+      }
+
+      setSelectedInventoryIndex((index) => Math.min(index + 1, inventoryItems.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedInventoryIndex(i => Math.max(i - 1, 0));
+      if (inventoryItems.length === 0) return;
+      if (selectedInventoryIndex <= 0) {
+        if (hasPreviousInventoryPage) {
+          setCurrentPage((page) => page - 1);
+          setSelectedInventoryIndex(ITEMS_PER_PAGE - 1);
+        }
+        return;
+      }
+
+      setSelectedInventoryIndex((index) => Math.max(index - 1, 0));
     } else if (e.key === "Enter" && e.ctrlKey) {
       e.preventDefault();
       addSelectedToCart();
@@ -753,12 +817,6 @@ function CashierPosPage() {
     }
   };
 
-  const requireManagerApproval = (action: "discount" | "return") => {
-    setPendingAction(action);
-    setManagerError(null);
-    setIsManagerModalOpen(true);
-  };
-
   const handleCloseShift = async (amount: number) => {
     if (!shiftId) {
       setError("No active shift to close.");
@@ -830,9 +888,36 @@ function CashierPosPage() {
     }
   };
 
+  const handleUnlockTerminal = async (password: string) => {
+    setIsUnlockingTerminal(true);
+    setTerminalLockError(null);
+
+    try {
+      const loginPassword = getSessionLoginPassword();
+      if (!loginPassword) {
+        setTerminalLockError("Login session password not found. Please log in again.");
+        return;
+      }
+
+      if (password !== loginPassword) {
+        setTerminalLockError("Invalid password. Please try again.");
+        return;
+      }
+
+      setIsTerminalLocked(false);
+      setTerminalLockError(null);
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+    } catch (err) {
+      console.error("Terminal unlock failed:", err);
+      setTerminalLockError("Unable to unlock terminal. Try again.");
+    } finally {
+      setIsUnlockingTerminal(false);
+    }
+  };
+
   return (
     <div className="h-screen w-full overflow-hidden bg-slate-300 p-6 font-sans">
-      <div className={`mx-auto grid h-full max-w-[1800px] grid-cols-[1fr_400px] gap-6 overflow-hidden transition ${(isDrawerOpen || isEditingOpeningBalance || isClosingBalanceOpen) ? "pointer-events-none blur-sm" : ""}`}>
+      <div className={`mx-auto grid h-full max-w-[1800px] grid-cols-[1fr_400px] gap-6 overflow-hidden transition ${(!isCheckingShift && (isDrawerOpen || isEditingOpeningBalance || isClosingBalanceOpen || isTerminalLocked)) ? "pointer-events-none blur-sm" : ""}`}>
 
         {/* LEFT - Transaction Area */}
         <div className="flex flex-col gap-6 overflow-hidden h-full">
@@ -886,7 +971,6 @@ function CashierPosPage() {
             setSelectedInventoryIndex={setSelectedInventoryIndex}
             setInventoryItems={setInventoryItems}
             setCurrentPage={setCurrentPage}
-            setHasMore={setHasMore}
             setShowInventoryModal={setShowInventoryModal}
             barcodeInputRef={barcodeInputRef}
             onAddToCart={handleDirectAddToCart}
@@ -957,18 +1041,20 @@ function CashierPosPage() {
 
       <InventoryModal
         showInventoryModal={showInventoryModal}
-        setShowInventoryModal={setShowInventoryModal}
         inventorySearch={inventorySearch}
         setInventorySearch={setInventorySearch}
         selectedCategory={selectedCategory}
         setSelectedCategory={setSelectedCategory}
+        stockFilter={stockFilter}
+        setStockFilter={setStockFilter}
+        isSearchMode={Boolean(inventorySearch.trim())}
         inventoryItems={inventoryItems}
         isLoading={isLoading}
         selectedInventoryIndex={selectedInventoryIndex}
         setSelectedInventoryIndex={setSelectedInventoryIndex}
+        currentPage={currentPage}
         setCurrentPage={setCurrentPage}
-        hasMore={hasMore}
-        loadingMore={loadingMore}
+        totalPages={totalInventoryPages}
         inventorySearchRef={inventorySearchRef}
         selectedItemRef={selectedItemRef}
         handleModalKeyDown={handleModalKeyDown}
@@ -981,7 +1067,7 @@ function CashierPosPage() {
       />
 
       <OpeningBalanceModal
-        isOpen={isDrawerOpen || isEditingOpeningBalance}
+        isOpen={!isCheckingShift && (isDrawerOpen || isEditingOpeningBalance)}
         isSubmitting={isOpeningShift}
         onSubmit={handleOpenStation}
         onResetSaved={isEditingOpeningBalance ? handleResetSavedOpeningBalance : undefined}
@@ -1026,6 +1112,13 @@ function CashierPosPage() {
         isProcessing={isLoading}
         onClose={() => setIsCheckoutOpen(false)}
         onConfirm={processPayment}
+      />
+
+      <TerminalLockModal
+        isOpen={isTerminalLocked}
+        isSubmitting={isUnlockingTerminal}
+        error={terminalLockError}
+        onUnlock={handleUnlockTerminal}
       />
 
       {/* Receipt Confirmation */}
@@ -1082,6 +1175,7 @@ function CashierPosPage() {
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Proceed to payment</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">F12</kbd></div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Edit opening balance</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Ctrl + D</kbd></div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Open close shift modal</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Ctrl + X</kbd></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Lock terminal</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">L</kbd></div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3"><span>Close inventory modal</span><kbd className="rounded bg-slate-900 px-2 py-1 text-xs font-bold text-white">Esc</kbd></div>
             </div>
           </div>

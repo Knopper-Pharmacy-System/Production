@@ -11,6 +11,10 @@ export interface Sale {
 export interface InventoryItem {
   id?: number;
   name?: string;
+  qr?: string;
+  qr_code?: string;
+  barcode?: string;
+  barcode_value?: string;
   productId?: number;
   product_name?: string;
   product_name_official?: string;

@@ -35,36 +35,36 @@ export default function AdminHeader({
 }: AdminHeaderProps) {
   return (
     <div
-      className="rounded-2xl px-5 py-4"
+      className="rounded-2xl px-4 sm:px-5 py-4"
       style={{
         background: "#0335af",
         border: "1px solid rgba(255,255,255,0.2)",
         boxShadow: "0 0 20px rgba(0,0,0,0.25)",
       }}
     >
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 xl:grid xl:grid-cols-[1fr_auto_1fr] xl:items-center xl:gap-4">
         {/* Left: Menu + Logo */}
-        <div className="flex-1 flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onMenuClick}
-            className="p-1"
+            className="p-1.5 rounded-lg transition-colors"
             style={{
               color: "rgba(255,255,255,0.8)",
-              background: "none",
+              background: "rgba(255,255,255,0.08)",
               border: "none",
               cursor: "pointer",
             }}
           >
             <Menu size={24} />
           </button>
-          <div className="flex flex-col">
+          <div className="flex flex-col min-w-0">
             <img
               src={bannerLogo}
               alt="Knopper Logo"
-              className="h-15 object-contain object-left"
+              className="h-9 sm:h-10 object-contain object-left"
               style={{ opacity: 0.85 }}
             />
-            <div className="flex items-center gap-2 mt-1">
+            <div className="hidden sm:flex items-center gap-2 mt-1">
               <span
                 className="text-xs font-semibold tracking-wide"
                 style={{ color: "rgba(228,226,226,0.86)" }}
@@ -89,14 +89,14 @@ export default function AdminHeader({
 
         {/* Date/Time Card */}
         <div
-          className="flex items-center gap-4 px-5 py-3 rounded-2xl shrink-0 tabular-nums"
+          className="flex items-center justify-between sm:justify-start gap-4 px-4 sm:px-5 py-3 rounded-2xl tabular-nums w-full xl:w-auto"
           style={{
             background: "rgba(0,20,69,0.7)",
             border: "1px solid rgba(255,255,255,0.2)",
             boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
           }}
         >
-          <div className="flex flex-col w-36">
+          <div className="flex flex-col min-w-[150px]">
             <span
               className="font-semibold tracking-widest uppercase"
               style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
@@ -114,12 +114,12 @@ export default function AdminHeader({
             className="w-px h-10"
             style={{ background: "rgba(255,255,255,0.2)" }}
           />
-          <div className="flex flex-col w-28">
+          <div className="flex flex-col min-w-[110px]">
             <span
               className="font-semibold tracking-widest uppercase"
               style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
             >
-              Last Sync
+              Current Time
             </span>
             <span
               className="text-sm font-semibold mt-0.5 whitespace-nowrap"
@@ -131,9 +131,9 @@ export default function AdminHeader({
         </div>
 
         {/* Right: Status + Bell */}
-        <div className="flex-1 flex items-center gap-3 justify-end">
+        <div className="flex items-center gap-3 justify-end">
           <span
-            className="text-sm font-semibold"
+            className="hidden sm:inline text-sm font-semibold"
             style={{ color: "rgba(255,255,255,0.6)" }}
           >
             STATUS:
@@ -149,12 +149,16 @@ export default function AdminHeader({
             ) : (
               <WifiOff size={16} className="text-white" />
             )}
-            <span className="text-sm font-semibold tracking-wider text-[#acf9be] whitespace-nowrap">
+            <span
+              className={`text-sm font-semibold tracking-wider whitespace-nowrap ${
+                isOnline ? "text-[#acf9be]" : "text-white"
+              }`}
+            >
               {isOnline ? "ONLINE" : "OFFLINE"}
             </span>
           </div>
           <button
-            className="p-2 rounded-lg"
+            className="p-2 rounded-lg transition-colors"
             style={{
               background: "rgba(217,217,217,0.21)",
               border: "none",

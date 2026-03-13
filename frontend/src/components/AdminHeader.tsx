@@ -6,6 +6,7 @@ import bannerLogo from "../assets/banner_logo.png";
 export interface AdminHeaderProps {
   onMenuClick: () => void;
   currentTime: Date;
+  lastSync?: Date;
   isOnline: boolean;
 }
 
@@ -31,6 +32,7 @@ const formatTime = (date: Date): string =>
 export default function AdminHeader({
   onMenuClick,
   currentTime,
+  lastSync,
   isOnline,
 }: AdminHeaderProps) {
   return (
@@ -126,6 +128,24 @@ export default function AdminHeader({
               style={{ color: "#c9d9ff" }}
             >
               {formatTime(currentTime)}
+            </span>
+          </div>
+          <div
+            className="w-px h-10"
+            style={{ background: "rgba(255,255,255,0.2)" }}
+          />
+          <div className="flex flex-col min-w-[110px]">
+            <span
+              className="font-semibold tracking-widest uppercase"
+              style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
+            >
+              Last Sync
+            </span>
+            <span
+              className="text-sm font-semibold mt-0.5 whitespace-nowrap"
+              style={{ color: "#c9d9ff" }}
+            >
+              {lastSync ? formatTime(lastSync) : "--:--:--"}
             </span>
           </div>
         </div>

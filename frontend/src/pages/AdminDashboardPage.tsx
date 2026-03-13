@@ -7,12 +7,9 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
   Cell,
   PieChart,
   Pie,
-  LabelList,
 } from "recharts";
 import {
   AlertCircle,
@@ -20,6 +17,7 @@ import {
   TrendingUp,
   Package,
   ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import AdminSidebar from "../components/AdminSidebar";
 import AdminHeader from "../components/AdminHeader";
@@ -37,11 +35,6 @@ interface StockSegment {
   name: string;
   value: number;
   color: string;
-}
-
-interface StockItem {
-  name: string;
-  value: number;
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -84,11 +77,28 @@ const stockContribution: StockSegment[] = [
   { name: "Near Expiry", value: 30, color: "#f3bf2c" },
 ];
 
-const criticalStockItems: StockItem[] = [
-  { name: "PARACETAMOL (ALVEDON)", value: 86.01 },
-  { name: "PARACETAMOL (BIOGESIC) 500S", value: 98.79 },
-  { name: "AICE 2N1 SUNDAE 800ML", value: 53.79 },
-  { name: "AICE DREAM 90ML", value: 33.35 },
+const lowStockProducts = [
+  {
+    name: "Paracetamol (Biogesic)",
+    quantity: 15,
+    reorder: 50,
+    status: "Critical",
+  },
+  { name: "Amoxicillin 500mg", quantity: 42, reorder: 100, status: "Low" },
+  { name: "Cetirizine 10mg", quantity: 28, reorder: 80, status: "Low" },
+  {
+    name: "Vitamin C (Poten-Cee)",
+    quantity: 8,
+    reorder: 40,
+    status: "Critical",
+  },
+];
+
+const nearExpiryProducts = [
+  { name: "Tempra Syrup", expiry: "May 20, 2026", daysLeft: 12 },
+  { name: "Bioflu Tablet", expiry: "Jun 15, 2026", daysLeft: 38 },
+  { name: "Alaxan FR", expiry: "Jun 01, 2026", daysLeft: 24 },
+  { name: "Neozep Forte", expiry: "May 28, 2026", daysLeft: 20 },
 ];
 
 const BRANCHES = [
@@ -550,69 +560,253 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* ── Critical Low Stock Items ──────────────────────────────────────── */}
-        <div
-          className="rounded-2xl p-6"
-          style={{
-            background: "#f0f0f0",
-            border: "1px solid rgba(47,47,47,0.68)",
-            boxShadow: "0 4px 4px rgba(0,0,0,0.5)",
-          }}
-        >
-          <h2 className="font-bold mb-6" style={{ color: "#062d8c" }}>
-            Critical Low Stock Items
-          </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart
-              data={criticalStockItems}
-              margin={{ top: 30, right: 30, left: 10, bottom: 20 }}
-              barSize={70}
-            >
-              <CartesianGrid
-                strokeDasharray="2 2"
-                stroke="rgba(0,0,26,0.15)"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: "rgba(0,0,0,0.7)", fontSize: 11 }}
-                interval={0}
-                axisLine={{ stroke: "rgba(0,0,26,0.3)" }}
-                tickLine={false}
-              />
-              <YAxis
-                domain={[0, 100]}
-                ticks={[0, 20, 40, 60, 80, 100]}
-                tick={{ fill: "rgba(0,0,0,0.7)", fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "#fff",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-                formatter={(val) => [Number(val).toFixed(2), "Stock Level"]}
-              />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                <LabelList
-                  dataKey="value"
-                  position="top"
-                  style={{ fill: "rgba(0,0,0,0.65)", fontSize: "11px" }}
-                  formatter={(val: unknown) => Number(val).toFixed(2)}
-                />
-                {criticalStockItems.map((_, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill="#8979ff"
-                    fillOpacity={0.85}
+        {/* ── Low Stock & Near Expiry Items ──────────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Low Stocks Items */}
+          <div
+            className="rounded-2xl p-6 relative"
+            style={{
+              background: "#f0f0f0",
+              border: "1px solid rgba(47,47,47,0.68)",
+              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div
+                  className="p-1.5 rounded-lg"
+                  style={{ background: "rgba(230,4,4,0.1)" }}
+                >
+                  <AlertCircle
+                    size={18}
+                    style={{ color: "rgba(230,4,4,0.67)" }}
                   />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                </div>
+                <h2 className="font-bold" style={{ color: "#062d8c" }}>
+                  Low Stocks Items
+                </h2>
+              </div>
+              <button
+                className="flex items-center gap-1 px-2 py-1 transition-opacity hover:opacity-70"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  className="text-xs font-bold"
+                  style={{ color: "#1133f2" }}
+                >
+                  View All
+                </span>
+                <ChevronRight size={14} style={{ color: "#1133f2" }} />
+              </button>
+            </div>
+
+            {/* Table */}
+            <div
+              className="rounded-lg overflow-hidden"
+              style={{
+                border: "1px solid #dedede",
+                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+              }}
+            >
+              {/* Header */}
+              <div
+                className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-6 py-3"
+                style={{
+                  background: "#e1e7f5",
+                  borderBottom: "1px solid #dbdee4",
+                }}
+              >
+                <p
+                  className="text-sm font-semibold"
+                  style={{ color: "#001d63" }}
+                >
+                  Product Name
+                </p>
+                <p
+                  className="text-sm font-semibold text-center"
+                  style={{ color: "#001d63" }}
+                >
+                  Quantity
+                </p>
+                <p
+                  className="text-sm font-semibold text-center"
+                  style={{ color: "#001d63" }}
+                >
+                  Reorder
+                </p>
+                <p
+                  className="text-sm font-semibold text-center"
+                  style={{ color: "#001d63" }}
+                >
+                  Status
+                </p>
+              </div>
+
+              {/* Rows */}
+              {lowStockProducts.map((product, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-6 py-3"
+                  style={{
+                    background: index % 2 === 0 ? "#f5f4f4" : "#e6e6e6",
+                  }}
+                >
+                  <p
+                    className="text-sm capitalize"
+                    style={{ color: "#001d63" }}
+                  >
+                    {product.name}
+                  </p>
+                  <p
+                    className="text-sm text-center"
+                    style={{ color: "#001d63" }}
+                  >
+                    {product.quantity}
+                  </p>
+                  <p
+                    className="text-sm text-center"
+                    style={{ color: "#001d63" }}
+                  >
+                    {product.reorder}
+                  </p>
+                  <div className="flex justify-center">
+                    <span
+                      className="px-2.5 py-1 rounded-full text-xs flex items-center gap-1"
+                      style={{
+                        background:
+                          product.status === "Critical"
+                            ? "rgba(243,44,44,0.32)"
+                            : "rgba(243,191,44,0.32)",
+                        color:
+                          product.status === "Critical" ? "#FF0000" : "#c89400",
+                      }}
+                    >
+                      {product.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Near Expiry Items */}
+          <div
+            className="rounded-2xl p-6 relative"
+            style={{
+              background: "#f0f0f0",
+              border: "1px solid rgba(47,47,47,0.68)",
+              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div
+                  className="p-1.5 rounded-lg"
+                  style={{ background: "rgba(179,147,49,0.1)" }}
+                >
+                  <Clock size={18} style={{ color: "#b39331" }} />
+                </div>
+                <h2 className="font-bold" style={{ color: "#062d8c" }}>
+                  Near Expiry Items
+                </h2>
+              </div>
+              <button
+                className="flex items-center gap-1 px-2 py-1 transition-opacity hover:opacity-70"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  className="text-xs font-bold"
+                  style={{ color: "#1133f2" }}
+                >
+                  View All
+                </span>
+                <ChevronRight size={14} style={{ color: "#1133f2" }} />
+              </button>
+            </div>
+
+            {/* Table */}
+            <div
+              className="rounded-lg overflow-hidden"
+              style={{
+                border: "1px solid #dedede",
+                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+              }}
+            >
+              {/* Header */}
+              <div
+                className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-6 py-3"
+                style={{
+                  background: "#e1e7f5",
+                  borderBottom: "1px solid #dbdee4",
+                }}
+              >
+                <p
+                  className="text-sm font-semibold"
+                  style={{ color: "#001d63" }}
+                >
+                  Product Name
+                </p>
+                <p
+                  className="text-sm font-semibold text-center"
+                  style={{ color: "#001d63" }}
+                >
+                  Expiry
+                </p>
+                <p
+                  className="text-sm font-semibold text-center"
+                  style={{ color: "#001d63" }}
+                >
+                  Days Left
+                </p>
+              </div>
+
+              {/* Rows */}
+              {nearExpiryProducts.map((product, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-6 py-3"
+                  style={{
+                    background: index % 2 === 0 ? "#f5f4f4" : "#e6e6e6",
+                  }}
+                >
+                  <p
+                    className="text-sm capitalize"
+                    style={{ color: "#001d63" }}
+                  >
+                    {product.name}
+                  </p>
+                  <p
+                    className="text-sm text-center"
+                    style={{ color: "#001d63" }}
+                  >
+                    {product.expiry}
+                  </p>
+                  <div className="flex justify-center">
+                    <span
+                      className="px-2.5 py-1 rounded-full text-xs"
+                      style={{
+                        background:
+                          product.daysLeft < 15
+                            ? "rgba(243,44,44,0.32)"
+                            : "rgba(243,191,44,0.32)",
+                        color: product.daysLeft < 15 ? "#FF0000" : "#c89400",
+                      }}
+                    >
+                      {product.daysLeft}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}

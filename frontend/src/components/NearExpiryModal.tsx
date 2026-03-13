@@ -267,7 +267,7 @@ function DaysLeftBadge({ days }: { days: number }) {
   const isCritical = days <= 15;
   return (
     <span
-      className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap min-w-[32px]"
+      className="inline-flex items-center justify-center px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap min-w-8"
       style={{
         background: isCritical
           ? "rgba(243,44,44,0.32)"

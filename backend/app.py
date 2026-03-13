@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
-from datetime import timedelta
+from datetime import timedelta, datetime
 from flask_cors import CORS   # ← NEW IMPORT
 
 # --- NEW: Load the .env file ---
@@ -390,6 +390,102 @@ def receive_inventory():
     except Exception as e:
         # If there's a Foreign Key error (e.g., product doesn't exist), it will be caught here
         mysql.connection.rollback() 
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+
+@app.route('/inventory/audit-adjustment', methods=['POST'])
+@jwt_required()
+def apply_audit_adjustment():
+    claims = get_jwt()
+    current_role = claims.get('role')
+    current_user_id = get_jwt_identity()
+
+    if current_role not in ['admin', 'manager']:
+        return jsonify({"message": "Access Denied: Only Managers/Admins can apply audit adjustments"}), 403
+
+    data = request.json or {}
+    inventory_id = data.get('inventory_id')
+    branch_id = data.get('branch_id')
+    physical_qty = data.get('physical_qty')
+    reason = data.get('reason', 'Count correction')
+
+    if inventory_id is None or branch_id is None or physical_qty is None:
+        return jsonify({"message": "Missing required fields (inventory_id, branch_id, physical_qty)"}), 400
+
+    try:
+        physical_qty = int(physical_qty)
+    except (TypeError, ValueError):
+        return jsonify({"message": "physical_qty must be a valid integer"}), 400
+
+    if physical_qty < 0:
+        return jsonify({"message": "physical_qty cannot be negative"}), 400
+
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT inventory_id, product_id, quantity_on_hand
+            FROM BRANCH_INVENTORY
+            WHERE inventory_id = %s AND branch_id = %s
+            """,
+            (inventory_id, branch_id),
+        )
+        row = cur.fetchone()
+
+        if not row:
+            return jsonify({"message": "Inventory record not found for this branch."}), 404
+
+        db_inventory_id, product_id, current_qty = row[0], row[1], int(row[2] or 0)
+        quantity_delta = physical_qty - current_qty
+
+        if quantity_delta == 0:
+            return jsonify({
+                "message": "No change detected.",
+                "inventory_id": db_inventory_id,
+                "branch_id": int(branch_id),
+                "previous_qty": current_qty,
+                "updated_qty": physical_qty,
+                "delta": 0,
+            }), 200
+
+        cur.execute(
+            "UPDATE BRANCH_INVENTORY SET quantity_on_hand = %s WHERE inventory_id = %s",
+            (physical_qty, db_inventory_id),
+        )
+
+        cur.execute(
+            """
+            UPDATE PRODUCTS
+            SET total_stock_quantity = IFNULL(total_stock_quantity, 0) + %s
+            WHERE product_id = %s
+            """,
+            (quantity_delta, product_id),
+        )
+
+        remarks = f"Audit count correction: {reason}"
+        cur.execute(
+            """
+            INSERT INTO STOCK_ADJUSTMENTS
+            (inventory_id, user_id, adjustment_type, quantity_adjusted, date_adjusted, remarks)
+            VALUES (%s, %s, 'COUNT_CORRECTION', %s, %s, %s)
+            """,
+            (db_inventory_id, current_user_id, quantity_delta, datetime.now(), remarks),
+        )
+
+        mysql.connection.commit()
+
+        return jsonify({
+            "message": "Audit adjustment applied successfully.",
+            "inventory_id": db_inventory_id,
+            "branch_id": int(branch_id),
+            "previous_qty": current_qty,
+            "updated_qty": physical_qty,
+            "delta": quantity_delta,
+        }), 200
+    except Exception as e:
+        mysql.connection.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()

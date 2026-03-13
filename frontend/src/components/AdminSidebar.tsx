@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
+  ClipboardList,
 } from "lucide-react";
 import logoSolid from "../assets/logo_solid.png";
 import { logout } from "../hooks/useAuth";
@@ -165,6 +166,7 @@ export default function AdminSidebar({
     Dashboard: "/admin",
     Overview: "/admin",
     Users: "/admin/users",
+    "Audit Sheet": "/admin/audit-sheet",
   };
 
   const handleNav = (item: string) => {
@@ -357,6 +359,20 @@ export default function AdminSidebar({
             active={activeItem === "Inventory"}
             chevron="right"
             onClick={() => handleNav("Inventory")}
+          />
+
+          {/* Audit Sheet */}
+          <SidebarItem
+            label="Audit Sheet"
+            icon={
+              <ClipboardList
+                size={14}
+                color={activeItem === "Audit Sheet" ? "#CB3CFF" : "#D6D6D6"}
+              />
+            }
+            active={activeItem === "Audit Sheet"}
+            chevron="right"
+            onClick={() => handleNav("Audit Sheet")}
           />
 
           <div className="flex-1 min-h-6" />

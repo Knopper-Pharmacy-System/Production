@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import CashierPosPage from "./pages/pos/CashierPosPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import UsersPage from "./pages/UsersPage";
+import AdminAuditSheet from "./pages/AdminAuditSheetPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -80,6 +81,14 @@ function App() {
           element={
             <ProtectedRoute expectedRole="admin">
               <UsersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/audit-sheet"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminAuditSheet />
             </ProtectedRoute>
           }
         />

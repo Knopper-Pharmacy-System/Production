@@ -238,13 +238,17 @@ export default function UsersPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setUsersError(data.message || data.error || "Failed to update user status.");
+        setUsersError(
+          data.message || data.error || "Failed to update user status.",
+        );
         return;
       }
 
       setUsers((prev) =>
         prev.map((u) =>
-          u.id === id ? { ...u, status: nextActive ? "Active" : "Inactive" } : u,
+          u.id === id
+            ? { ...u, status: nextActive ? "Active" : "Inactive" }
+            : u,
         ),
       );
       setLastSync(new Date());
@@ -333,7 +337,7 @@ export default function UsersPage() {
         }}
       />
 
-      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
+      <div className="w-full max-w-450 mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* ── Header Card ──────────────────────────────────────────────────── */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}

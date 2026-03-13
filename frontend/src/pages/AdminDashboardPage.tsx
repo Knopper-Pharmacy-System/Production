@@ -177,7 +177,7 @@ export default function AdminDashboardPage() {
       />
 
       {/* Main Content */}
-      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
+      <div className="w-full max-w-450 mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* ── Header Card ──────────────────────────────────────────────────── */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
@@ -664,7 +664,10 @@ export default function AdminDashboardPage() {
                   <p className="text-xs truncate" style={{ color: "#2f2f2f" }}>
                     {product.name}
                   </p>
-                  <p className="text-xs font-semibold" style={{ color: "#2f2f2f" }}>
+                  <p
+                    className="text-xs font-semibold"
+                    style={{ color: "#2f2f2f" }}
+                  >
                     {product.quantity}
                   </p>
                   <p className="text-xs" style={{ color: "#636363" }}>
@@ -767,7 +770,10 @@ export default function AdminDashboardPage() {
                   <p className="text-xs" style={{ color: "#636363" }}>
                     {product.expiry}
                   </p>
-                  <p className="text-xs font-semibold" style={{ color: "#f3bf2c" }}>
+                  <p
+                    className="text-xs font-semibold"
+                    style={{ color: "#f3bf2c" }}
+                  >
                     {product.daysLeft} days
                   </p>
                 </div>

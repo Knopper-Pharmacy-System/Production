@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import AdminSidebar from "../components/AdminSidebar";
 import AdminHeader from "../components/AdminHeader";
+import LowStocksModal from "../components/LowStocksModal";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,7 @@ export default function AdminDashboardPage() {
   const [selectedBranch, setSelectedBranch] = useState<string>("BMC MAIN");
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [lowStocksModalOpen, setLowStocksModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -159,6 +161,11 @@ export default function AdminDashboardPage() {
       <AdminSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+      />
+
+      <LowStocksModal
+        isOpen={lowStocksModalOpen}
+        onClose={() => setLowStocksModalOpen(false)}
       />
 
       {/* Main Content */}
@@ -588,6 +595,7 @@ export default function AdminDashboardPage() {
               </div>
               <button
                 className="flex items-center gap-1 px-2 py-1 transition-opacity hover:opacity-70"
+                onClick={() => setLowStocksModalOpen(true)}
                 style={{
                   background: "transparent",
                   border: "none",

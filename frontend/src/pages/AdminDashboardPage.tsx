@@ -182,6 +182,7 @@ export default function AdminDashboardPage() {
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           currentTime={currentTime}
+          lastSync={currentTime}
           isOnline={isOnline}
         />
 
@@ -635,25 +636,144 @@ export default function AdminDashboardPage() {
                   background: "#e1e7f5",
                   borderBottom: "1px solid #dbdee4",
                 }}
-                formatter={(val: unknown) => [Number(val).toFixed(2), "Stock Level"]}
-              />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                <LabelList
-                  dataKey="value"
-                  position="top"
-                  style={{ fill: "rgba(0,0,0,0.65)", fontSize: "11px" }}
-                  formatter={(val: unknown) => Number(val).toFixed(2)}
-                />
-                {criticalStockItems.map((_, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill="#8979ff"
-                    fillOpacity={0.85}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+              >
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Product
+                </p>
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Qty
+                </p>
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Reorder
+                </p>
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Status
+                </p>
+              </div>
+
+              {lowStockProducts.slice(0, 4).map((product, index) => (
+                <div
+                  key={`${product.name}-${index}`}
+                  className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-6 py-3"
+                  style={{
+                    borderBottom:
+                      index === 3 ? "none" : "1px solid rgba(0,0,0,0.08)",
+                    background: index % 2 === 0 ? "#ffffff" : "#f9fbff",
+                  }}
+                >
+                  <p className="text-xs truncate" style={{ color: "#2f2f2f" }}>
+                    {product.name}
+                  </p>
+                  <p className="text-xs font-semibold" style={{ color: "#2f2f2f" }}>
+                    {product.quantity}
+                  </p>
+                  <p className="text-xs" style={{ color: "#636363" }}>
+                    {product.reorder}
+                  </p>
+                  <p
+                    className="text-xs font-bold"
+                    style={{
+                      color:
+                        product.status === "Critical"
+                          ? "rgba(230,4,4,0.75)"
+                          : "#f3bf2c",
+                    }}
+                  >
+                    {product.status}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Near Expiry Items */}
+          <div
+            className="rounded-2xl p-6 relative"
+            style={{
+              background: "#f0f0f0",
+              border: "1px solid rgba(47,47,47,0.68)",
+              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
+            }}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div
+                  className="p-1.5 rounded-lg"
+                  style={{ background: "rgba(243,191,44,0.15)" }}
+                >
+                  <Clock size={18} style={{ color: "#f3bf2c" }} />
+                </div>
+                <h2 className="font-bold" style={{ color: "#062d8c" }}>
+                  Near Expiry Items
+                </h2>
+              </div>
+              <button
+                className="flex items-center gap-1 px-2 py-1 transition-opacity hover:opacity-70"
+                onClick={() => setNearExpiryModalOpen(true)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  className="text-xs font-bold"
+                  style={{ color: "#1133f2" }}
+                >
+                  View All
+                </span>
+                <ChevronRight size={14} style={{ color: "#1133f2" }} />
+              </button>
+            </div>
+
+            <div
+              className="rounded-lg overflow-hidden"
+              style={{
+                border: "1px solid #dedede",
+                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+              }}
+            >
+              <div
+                className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-6 py-3"
+                style={{
+                  background: "#e1e7f5",
+                  borderBottom: "1px solid #dbdee4",
+                }}
+              >
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Product
+                </p>
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Expiry Date
+                </p>
+                <p className="text-xs font-bold" style={{ color: "#062d8c" }}>
+                  Days Left
+                </p>
+              </div>
+
+              {nearExpiryProducts.slice(0, 4).map((product, index) => (
+                <div
+                  key={`${product.name}-${index}`}
+                  className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-6 py-3"
+                  style={{
+                    borderBottom:
+                      index === 3 ? "none" : "1px solid rgba(0,0,0,0.08)",
+                    background: index % 2 === 0 ? "#ffffff" : "#f9fbff",
+                  }}
+                >
+                  <p className="text-xs truncate" style={{ color: "#2f2f2f" }}>
+                    {product.name}
+                  </p>
+                  <p className="text-xs" style={{ color: "#636363" }}>
+                    {product.expiry}
+                  </p>
+                  <p className="text-xs font-semibold" style={{ color: "#f3bf2c" }}>
+                    {product.daysLeft} days
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}

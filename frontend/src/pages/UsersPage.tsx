@@ -118,6 +118,7 @@ const STATUS_COLORS: Record<Status, { bg: string; text: string; dot: string }> =
 
 export default function UsersPage() {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [lastSync, setLastSync] = useState<Date>(new Date());
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
@@ -165,6 +166,7 @@ export default function UsersPage() {
       }));
 
       setUsers(mapped);
+      setLastSync(new Date());
     } catch {
       setUsersError("Network error while loading users.");
     } finally {
@@ -245,6 +247,7 @@ export default function UsersPage() {
           u.id === id ? { ...u, status: nextActive ? "Active" : "Inactive" } : u,
         ),
       );
+      setLastSync(new Date());
     } catch {
       setUsersError("Network error while updating user.");
     } finally {
@@ -274,6 +277,7 @@ export default function UsersPage() {
       }
 
       setUsers((prev) => prev.filter((u) => u.id !== id));
+      setLastSync(new Date());
     } catch {
       setUsersError("Network error while deleting user.");
     } finally {
@@ -334,6 +338,7 @@ export default function UsersPage() {
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           currentTime={currentTime}
+          lastSync={lastSync}
           isOnline={isOnline}
         />
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Search,
   UserPlus,
@@ -15,10 +15,14 @@ import {
 import AdminSidebar from "../components/AdminSidebar";
 import AdminHeader from "../components/AdminHeader";
 import CreateUserModal from "../components/CreateUserModal";
+import { getToken } from "../hooks/useAuth";
+
+const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Role = "Admin" | "Manager" | "Cashier";
+type Role = "Admin" | "Manager" | "Cashier" | "Staff";
 type Status = "Active" | "Inactive";
 
 interface UserRecord {
@@ -31,6 +35,25 @@ interface UserRecord {
   lastLogin: string;
 }
 
+interface ApiUserRecord {
+  user_id: number;
+  username: string;
+  full_name: string;
+  role: string;
+  branch: string;
+  status: string;
+}
+
+interface EditableUser {
+  id: number;
+  user_id: string;
+  branch_id: string;
+  full_name: string;
+  username: string;
+  role: string;
+  status: Status;
+}
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const ROLE_OPTIONS: Array<"All" | Role> = [
@@ -38,83 +61,24 @@ const ROLE_OPTIONS: Array<"All" | Role> = [
   "Admin",
   "Manager",
   "Cashier",
+  "Staff",
 ];
 const STATUS_OPTIONS: Array<"All" | Status> = ["All", "Active", "Inactive"];
 
-const INITIAL_USERS: UserRecord[] = [
-  {
-    id: 1,
-    name: "Maria Santos",
-    email: "m.santos@knopperrx.com",
-    role: "Admin",
-    branch: "BMC MAIN",
-    status: "Active",
-    lastLogin: "Mar 12, 2026 09:41 AM",
-  },
-  {
-    id: 2,
-    name: "Jose Reyes",
-    email: "j.reyes@knopperrx.com",
-    role: "Manager",
-    branch: "DIVERSION BRANCH",
-    status: "Active",
-    lastLogin: "Mar 12, 2026 08:15 AM",
-  },
-  {
-    id: 3,
-    name: "Ana Cruz",
-    email: "a.cruz@knopperrx.com",
-    role: "Cashier",
-    branch: "BMC MAIN",
-    status: "Active",
-    lastLogin: "Mar 11, 2026 05:52 PM",
-  },
-  {
-    id: 4,
-    name: "Carlo Mendoza",
-    email: "c.mendoza@knopperrx.com",
-    role: "Cashier",
-    branch: "PANGANIBAN BRANCH",
-    status: "Active",
-    lastLogin: "Mar 11, 2026 06:30 PM",
-  },
-  {
-    id: 5,
-    name: "Liza Flores",
-    email: "l.flores@knopperrx.com",
-    role: "Manager",
-    branch: "BMC MAIN",
-    status: "Active",
-    lastLogin: "Mar 10, 2026 02:00 PM",
-  },
-  {
-    id: 6,
-    name: "Ramon Dela Torre",
-    email: "r.delatorre@knopperrx.com",
-    role: "Cashier",
-    branch: "DIVERSION BRANCH",
-    status: "Inactive",
-    lastLogin: "Feb 28, 2026 11:22 AM",
-  },
-  {
-    id: 7,
-    name: "Grace Villanueva",
-    email: "g.villanueva@knopperrx.com",
-    role: "Cashier",
-    branch: "PANGANIBAN BRANCH",
-    status: "Inactive",
-    lastLogin: "Mar 01, 2026 09:00 AM",
-  },
-  {
-    id: 8,
-    name: "Marco Aquino",
-    email: "m.aquino@knopperrx.com",
-    role: "Admin",
-    branch: "BMC MAIN",
-    status: "Active",
-    lastLogin: "Mar 12, 2026 07:58 AM",
-  },
-];
+const INITIAL_USERS: UserRecord[] = [];
+
+const BRANCH_ID_BY_NAME: Record<string, string> = {
+  "BMC MAIN": "1",
+  "DIVERSION BRANCH": "2",
+  "PANGANIBAN BRANCH": "3",
+};
+
+const ROLE_TO_API: Record<Role, string> = {
+  Admin: "admin",
+  Manager: "manager",
+  Cashier: "cashier",
+  Staff: "staff",
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -122,7 +86,19 @@ const ROLE_COLORS: Record<Role, { bg: string; text: string }> = {
   Admin: { bg: "rgba(203,60,255,0.15)", text: "#cb3cff" },
   Manager: { bg: "rgba(0,59,205,0.13)", text: "#3b6eff" },
   Cashier: { bg: "rgba(0,191,44,0.13)", text: "#00bf2c" },
+  Staff: { bg: "rgba(236,108,0,0.13)", text: "#d37b13" },
 };
+
+const normalizeRole = (role: string): Role => {
+  const normalized = role.trim().toLowerCase();
+  if (normalized === "admin") return "Admin";
+  if (normalized === "manager") return "Manager";
+  if (normalized === "cashier") return "Cashier";
+  return "Staff";
+};
+
+const normalizeStatus = (status: string): Status =>
+  status.trim().toLowerCase() === "active" ? "Active" : "Inactive";
 
 const STATUS_COLORS: Record<Status, { bg: string; text: string; dot: string }> =
   {
@@ -151,6 +127,50 @@ export default function UsersPage() {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
   const [createModalOpen, setCreateModalOpen] = useState<boolean>(false);
+  const [editUser, setEditUser] = useState<EditableUser | null>(null);
+  const [isFetchingUsers, setIsFetchingUsers] = useState<boolean>(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+
+  const fetchUsers = useCallback(async () => {
+    setIsFetchingUsers(true);
+    setUsersError(null);
+
+    try {
+      const token = getToken();
+      if (!token) {
+        setUsersError("No auth token found. Please log in again.");
+        return;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/users`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setUsersError(data.message || data.error || "Failed to load users.");
+        return;
+      }
+
+      const mapped: UserRecord[] = (data as ApiUserRecord[]).map((user) => ({
+        id: Number(user.user_id),
+        name: user.full_name || user.username,
+        email: user.username,
+        role: normalizeRole(user.role),
+        branch: user.branch || "—",
+        status: normalizeStatus(user.status),
+        lastLogin: "—",
+      }));
+
+      setUsers(mapped);
+    } catch {
+      setUsersError("Network error while loading users.");
+    } finally {
+      setIsFetchingUsers(false);
+    }
+  }, []);
 
   useEffect(() => {
     const handleStatus = () => setIsOnline(navigator.onLine);
@@ -166,6 +186,10 @@ export default function UsersPage() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
 
   // Close action menu when clicking outside
   useEffect(() => {
@@ -188,19 +212,86 @@ export default function UsersPage() {
   const adminCount = users.filter((u) => u.role === "Admin").length;
   const cashierCount = users.filter((u) => u.role === "Cashier").length;
 
-  const handleToggleStatus = (id: number) => {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? { ...u, status: u.status === "Active" ? "Inactive" : "Active" }
-          : u,
-      ),
-    );
-    setOpenMenuId(null);
+  const handleToggleStatus = async (id: number) => {
+    const target = users.find((u) => u.id === id);
+    if (!target) return;
+
+    const nextActive = target.status !== "Active";
+
+    try {
+      const token = getToken();
+      if (!token) {
+        setUsersError("No auth token found. Please log in again.");
+        return;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/update-users/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ is_active: nextActive }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setUsersError(data.message || data.error || "Failed to update user status.");
+        return;
+      }
+
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === id ? { ...u, status: nextActive ? "Active" : "Inactive" } : u,
+        ),
+      );
+    } catch {
+      setUsersError("Network error while updating user.");
+    } finally {
+      setOpenMenuId(null);
+    }
   };
 
-  const handleDelete = (id: number) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
+  const handleDelete = async (id: number) => {
+    try {
+      const token = getToken();
+      if (!token) {
+        setUsersError("No auth token found. Please log in again.");
+        return;
+      }
+
+      const res = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setUsersError(data.message || data.error || "Failed to delete user.");
+        return;
+      }
+
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch {
+      setUsersError("Network error while deleting user.");
+    } finally {
+      setOpenMenuId(null);
+    }
+  };
+
+  const openEditModal = (user: UserRecord) => {
+    const normalizedBranch = user.branch.trim().toUpperCase();
+    setEditUser({
+      id: user.id,
+      user_id: String(user.id),
+      branch_id: BRANCH_ID_BY_NAME[normalizedBranch] || "1",
+      full_name: user.name,
+      username: user.email,
+      role: ROLE_TO_API[user.role],
+      status: user.status,
+    });
     setOpenMenuId(null);
   };
 
@@ -220,9 +311,25 @@ export default function UsersPage() {
       <CreateUserModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
+        mode="create"
+        onSuccess={() => {
+          fetchUsers();
+          setCreateModalOpen(false);
+        }}
       />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-5">
+      <CreateUserModal
+        isOpen={Boolean(editUser)}
+        onClose={() => setEditUser(null)}
+        mode="edit"
+        initialUser={editUser}
+        onSuccess={() => {
+          fetchUsers();
+          setEditUser(null);
+        }}
+      />
+
+      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* ── Header Card ──────────────────────────────────────────────────── */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
@@ -415,6 +522,19 @@ export default function UsersPage() {
             boxShadow: "0 4px 4px rgba(0,0,0,0.5)",
           }}
         >
+          {usersError && (
+            <div
+              className="mb-4 px-4 py-3 rounded-xl text-sm font-semibold"
+              style={{
+                background: "rgba(230,4,4,0.12)",
+                color: "#a30000",
+                border: "1px solid rgba(230,4,4,0.25)",
+              }}
+            >
+              {usersError}
+            </div>
+          )}
+
           {/* Table Header Row */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <h2 className="font-bold text-base" style={{ color: "#062d8c" }}>
@@ -528,7 +648,7 @@ export default function UsersPage() {
                       className="text-center py-10 text-sm"
                       style={{ color: "#999", background: "#fff" }}
                     >
-                      No users found.
+                      {isFetchingUsers ? "Loading users..." : "No users found."}
                     </td>
                   </tr>
                 ) : (
@@ -672,6 +792,7 @@ export default function UsersPage() {
                                   cursor: "pointer",
                                   color: "#333",
                                 }}
+                                onClick={() => openEditModal(user)}
                                 onMouseEnter={(e) => {
                                   (
                                     e.currentTarget as HTMLButtonElement

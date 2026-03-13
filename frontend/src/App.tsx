@@ -1,8 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 import LoginPage from "./pages/LoginPage";
-import CashierPosPage from "./pages/CashierPosPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage.tsx";
+import CashierPosPage from "./pages/pos/CashierPosPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 import UsersPage from "./pages/UsersPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
@@ -23,7 +23,7 @@ const roleHomePath = (role: string) => {
     case "admin":
       return "/admin";
     case "cashier":
-      return "/cashier";
+      return "/pos";
     case "staff":
       return "/staff";
     case "omvb_manager":
@@ -76,14 +76,6 @@ function App() {
           }
         />
         <Route
-          path="/cashier"
-          element={
-            <ProtectedRoute expectedRole="cashier">
-              <CashierPosPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/admin/users"
           element={
             <ProtectedRoute expectedRole="admin">
@@ -91,6 +83,15 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/pos"
+          element={
+            <ProtectedRoute expectedRole="cashier">
+              <CashierPosPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/cashier" element={<Navigate to="/pos" replace />} />
         <Route
           path="/staff"
           element={

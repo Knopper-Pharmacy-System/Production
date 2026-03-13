@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Eye, EyeOff, UserPlus, Loader2 } from "lucide-react";
 import { getToken } from "../hooks/useAuth";
 
@@ -14,6 +14,7 @@ const BRANCH_OPTIONS = [
 ];
 
 const ROLE_OPTIONS = [
+  { label: "Admin", value: "admin" },
   { label: "Staff", value: "staff" },
   { label: "Manager", value: "manager" },
   { label: "Cashier", value: "cashier" },
@@ -24,6 +25,17 @@ const ROLE_OPTIONS = [
 interface CreateUserModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
+  mode?: "create" | "edit";
+  initialUser?: {
+    id: number;
+    user_id: string;
+    branch_id: string;
+    full_name: string;
+    username: string;
+    role: string;
+    status: "Active" | "Inactive";
+  } | null;
 }
 
 interface FormState {
@@ -49,14 +61,21 @@ interface FormErrors {
 export default function CreateUserModal({
   isOpen,
   onClose,
+  onSuccess,
+  mode = "create",
+  initialUser = null,
 }: CreateUserModalProps) {
-  const [form, setForm] = useState<FormState>({
+  const emptyForm: FormState = {
     user_id: "",
     branch_id: "",
     full_name: "",
     username: "",
     password: "",
     role: "",
+  };
+
+  const [form, setForm] = useState<FormState>({
+    ...emptyForm,
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -65,6 +84,28 @@ export default function CreateUserModal({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (mode === "edit" && initialUser) {
+      setForm({
+        user_id: initialUser.user_id,
+        branch_id: initialUser.branch_id,
+        full_name: initialUser.full_name,
+        username: initialUser.username,
+        password: "",
+        role: initialUser.role,
+      });
+    } else {
+      setForm(emptyForm);
+    }
+
+    setErrors({});
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    setShowPassword(false);
+  }, [isOpen, mode, initialUser]);
+
   if (!isOpen) return null;
 
   // ── Validation ──────────────────────────────────────────────────────────────
@@ -72,12 +113,16 @@ export default function CreateUserModal({
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
 
-    if (!form.user_id.trim()) newErrors.user_id = "User ID is required.";
+    if (mode === "create" && !form.user_id.trim()) {
+      newErrors.user_id = "User ID is required.";
+    }
     if (!form.branch_id) newErrors.branch_id = "Branch is required.";
     if (!form.full_name.trim()) newErrors.full_name = "Full name is required.";
     if (!form.username.trim()) newErrors.username = "Username is required.";
     if (!form.password) {
-      newErrors.password = "Password is required.";
+      if (mode === "create") {
+        newErrors.password = "Password is required.";
+      }
     } else if (form.password.length < 8) {
       newErrors.password = "Password must be at least 8 characters.";
     }
@@ -100,14 +145,7 @@ export default function CreateUserModal({
   };
 
   const handleClose = () => {
-    setForm({
-      user_id: "",
-      branch_id: "",
-      full_name: "",
-      username: "",
-      password: "",
-      role: "",
-    });
+    setForm(emptyForm);
     setErrors({});
     setSuccessMsg(null);
     setErrorMsg(null);
@@ -124,39 +162,58 @@ export default function CreateUserModal({
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/users`, {
-        method: "POST",
+      const isEditMode = mode === "edit" && initialUser;
+      const endpoint = isEditMode
+        ? `${API_BASE_URL}/update-users/${initialUser.id}`
+        : `${API_BASE_URL}/users`;
+
+      const payload = isEditMode
+        ? {
+            branch_id: Number(form.branch_id),
+            full_name: form.full_name.trim(),
+            username: form.username.trim(),
+            role: form.role,
+            is_active: initialUser.status === "Active",
+            ...(form.password ? { password: form.password } : {}),
+          }
+        : {
+            user_id: form.user_id.trim(),
+            branch_id: Number(form.branch_id),
+            full_name: form.full_name.trim(),
+            username: form.username.trim(),
+            password: form.password,
+            role: form.role,
+          };
+
+      const res = await fetch(endpoint, {
+        method: isEditMode ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({
-          user_id: form.user_id.trim(),
-          branch_id: Number(form.branch_id),
-          full_name: form.full_name.trim(),
-          username: form.username.trim(),
-          password: form.password,
-          role: form.role,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.message || data.error || "Failed to create user.");
+        setErrorMsg(
+          data.message ||
+            data.error ||
+            (isEditMode ? "Failed to update user." : "Failed to create user."),
+        );
       } else {
         setSuccessMsg(
-          data.message || `User ${form.username} created successfully.`,
+          data.message ||
+            (isEditMode
+              ? `User ${form.username} updated successfully.`
+              : `User ${form.username} created successfully.`),
         );
-        setForm({
-          user_id: "",
-          branch_id: "",
-          full_name: "",
-          username: "",
-          password: "",
-          role: "",
-        });
+        if (!isEditMode) {
+          setForm(emptyForm);
+        }
         setErrors({});
+        onSuccess?.();
       }
     } catch {
       setErrorMsg("Network error. Please try again.");
@@ -206,13 +263,15 @@ export default function CreateUserModal({
                 className="font-extrabold text-base tracking-wide uppercase"
                 style={{ color: "#c9d9ff" }}
               >
-                Create New User
+                {mode === "edit" ? "Edit User" : "Create New User"}
               </h2>
               <p
                 className="text-xs mt-0.5"
                 style={{ color: "rgba(185,224,255,0.7)" }}
               >
-                Fill in all fields to register a new account
+                {mode === "edit"
+                  ? "Update user profile and permissions"
+                  : "Fill in all fields to register a new account"}
               </p>
             </div>
           </div>
@@ -285,13 +344,14 @@ export default function CreateUserModal({
                 value={form.user_id}
                 onChange={handleChange}
                 placeholder="e.g. U-001"
+                disabled={mode === "edit"}
                 className="rounded-xl px-3 h-10 text-sm outline-none w-full"
                 style={{
-                  background: "#fff",
+                  background: mode === "edit" ? "#f5f5f5" : "#fff",
                   border: errors.user_id
                     ? "1.5px solid #e60404"
                     : "1px solid rgba(0,0,0,0.15)",
-                  color: "#1a1a2e",
+                  color: mode === "edit" ? "#666" : "#1a1a2e",
                 }}
               />
               {errors.user_id && (
@@ -484,7 +544,9 @@ export default function CreateUserModal({
               </span>
             ) : (
               <span className="text-xs" style={{ color: "#636363" }}>
-                Must be at least 8 characters.
+                {mode === "edit"
+                  ? "Leave blank to keep current password."
+                  : "Must be at least 8 characters."}
               </span>
             )}
           </div>
@@ -532,12 +594,12 @@ export default function CreateUserModal({
               {loading ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  Creating...
+                  {mode === "edit" ? "Saving..." : "Creating..."}
                 </>
               ) : (
                 <>
                   <UserPlus size={15} />
-                  Create User
+                  {mode === "edit" ? "Save Changes" : "Create User"}
                 </>
               )}
             </button>

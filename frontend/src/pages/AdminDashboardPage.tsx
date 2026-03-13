@@ -177,7 +177,7 @@ export default function AdminDashboardPage() {
       />
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-5">
+      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* ── Header Card ──────────────────────────────────────────────────── */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
@@ -488,7 +488,7 @@ export default function AdminDashboardPage() {
                     borderRadius: 8,
                     fontSize: 12,
                   }}
-                  formatter={(val) => [
+                  formatter={(val: unknown) => [
                     `₱${Number(val).toLocaleString()}`,
                     "Sales",
                   ]}
@@ -635,195 +635,25 @@ export default function AdminDashboardPage() {
                   background: "#e1e7f5",
                   borderBottom: "1px solid #dbdee4",
                 }}
-              >
-                <p
-                  className="text-sm font-semibold"
-                  style={{ color: "#001d63" }}
-                >
-                  Product Name
-                </p>
-                <p
-                  className="text-sm font-semibold text-center"
-                  style={{ color: "#001d63" }}
-                >
-                  Quantity
-                </p>
-                <p
-                  className="text-sm font-semibold text-center"
-                  style={{ color: "#001d63" }}
-                >
-                  Reorder
-                </p>
-                <p
-                  className="text-sm font-semibold text-center"
-                  style={{ color: "#001d63" }}
-                >
-                  Status
-                </p>
-              </div>
-
-              {/* Rows */}
-              {lowStockProducts.map((product, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-6 py-3"
-                  style={{
-                    background: index % 2 === 0 ? "#f5f4f4" : "#e6e6e6",
-                  }}
-                >
-                  <p
-                    className="text-sm capitalize"
-                    style={{ color: "#001d63" }}
-                  >
-                    {product.name}
-                  </p>
-                  <p
-                    className="text-sm text-center"
-                    style={{ color: "#001d63" }}
-                  >
-                    {product.quantity}
-                  </p>
-                  <p
-                    className="text-sm text-center"
-                    style={{ color: "#001d63" }}
-                  >
-                    {product.reorder}
-                  </p>
-                  <div className="flex justify-center">
-                    <span
-                      className="px-2.5 py-1 rounded-full text-xs flex items-center gap-1"
-                      style={{
-                        background:
-                          product.status === "Critical"
-                            ? "rgba(243,44,44,0.32)"
-                            : "rgba(243,191,44,0.32)",
-                        color:
-                          product.status === "Critical" ? "#FF0000" : "#c89400",
-                      }}
-                    >
-                      {product.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Near Expiry Items */}
-          <div
-            className="rounded-2xl p-6 relative"
-            style={{
-              background: "#f0f0f0",
-              border: "1px solid rgba(47,47,47,0.68)",
-              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
-            }}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div
-                  className="p-1.5 rounded-lg"
-                  style={{ background: "rgba(179,147,49,0.1)" }}
-                >
-                  <Clock size={18} style={{ color: "#b39331" }} />
-                </div>
-                <h2 className="font-bold" style={{ color: "#062d8c" }}>
-                  Near Expiry Items
-                </h2>
-              </div>
-              <button
-                className="flex items-center gap-1 px-2 py-1 transition-opacity hover:opacity-70"
-                onClick={() => setNearExpiryModalOpen(true)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <span
-                  className="text-xs font-bold"
-                  style={{ color: "#1133f2" }}
-                >
-                  View All
-                </span>
-                <ChevronRight size={14} style={{ color: "#1133f2" }} />
-              </button>
-            </div>
-
-            {/* Table */}
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{
-                border: "1px solid #dedede",
-                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
-              }}
-            >
-              {/* Header */}
-              <div
-                className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-6 py-3"
-                style={{
-                  background: "#e1e7f5",
-                  borderBottom: "1px solid #dbdee4",
-                }}
-              >
-                <p
-                  className="text-sm font-semibold"
-                  style={{ color: "#001d63" }}
-                >
-                  Product Name
-                </p>
-                <p
-                  className="text-sm font-semibold text-center"
-                  style={{ color: "#001d63" }}
-                >
-                  Expiry
-                </p>
-                <p
-                  className="text-sm font-semibold text-center"
-                  style={{ color: "#001d63" }}
-                >
-                  Days Left
-                </p>
-              </div>
-
-              {/* Rows */}
-              {nearExpiryProducts.map((product, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-[2fr_1fr_1fr] gap-4 px-6 py-3"
-                  style={{
-                    background: index % 2 === 0 ? "#f5f4f4" : "#e6e6e6",
-                  }}
-                >
-                  <p
-                    className="text-sm capitalize"
-                    style={{ color: "#001d63" }}
-                  >
-                    {product.name}
-                  </p>
-                  <p
-                    className="text-sm text-center"
-                    style={{ color: "#001d63" }}
-                  >
-                    {product.expiry}
-                  </p>
-                  <div className="flex justify-center">
-                    <span
-                      className="px-2.5 py-1 rounded-full text-xs"
-                      style={{
-                        background:
-                          product.daysLeft < 15
-                            ? "rgba(243,44,44,0.32)"
-                            : "rgba(243,191,44,0.32)",
-                        color: product.daysLeft < 15 ? "#FF0000" : "#c89400",
-                      }}
-                    >
-                      {product.daysLeft}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                formatter={(val: unknown) => [Number(val).toFixed(2), "Stock Level"]}
+              />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  style={{ fill: "rgba(0,0,0,0.65)", fontSize: "11px" }}
+                  formatter={(val: unknown) => Number(val).toFixed(2)}
+                />
+                {criticalStockItems.map((_, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill="#8979ff"
+                    fillOpacity={0.85}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         {/* Footer */}

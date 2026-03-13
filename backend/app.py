@@ -282,6 +282,7 @@ def get_branch_inventory(branch_id):
                 p.product_name_official,
                 p.product_name_receipt,
                 p.category_type,
+                pbc.barcode_value,
                 bi.batch_number,
                 bi.expiry_date,
                 bi.quantity_on_hand,
@@ -290,6 +291,16 @@ def get_branch_inventory(branch_id):
             FROM BRANCH_INVENTORY bi
             JOIN PRODUCTS p ON bi.product_id = p.product_id
             JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
+            LEFT JOIN (
+                SELECT
+                    product_id,
+                    COALESCE(
+                        MAX(CASE WHEN is_primary = TRUE THEN barcode_value END),
+                        MIN(barcode_value)
+                    ) AS barcode_value
+                FROM PRODUCT_BARCODES
+                GROUP BY product_id
+            ) pbc ON p.product_id = pbc.product_id
             WHERE bi.branch_id = %s
         """
         params = [branch_id]
@@ -310,12 +321,13 @@ def get_branch_inventory(branch_id):
                 "product_name": item[3] if item[3] else item[2],  # receipt name, fallback to official
                 "product_name_official": item[2],
                 "category": item[4],
-                "batch_number": item[5],
+                "barcode": item[5],
+                "batch_number": item[6],
                 # Dates need to be converted to strings for JSON formatting
-                "expiry_date": item[6].strftime('%Y-%m-%d') if item[6] else None,
-                "quantity_on_hand": item[7],
-                "price": float(item[8]) if item[8] else 0.00,
-                "gondola_code": item[9]
+                "expiry_date": item[7].strftime('%Y-%m-%d') if item[7] else None,
+                "quantity_on_hand": item[8],
+                "price": float(item[9]) if item[9] else 0.00,
+                "gondola_code": item[10]
             })
 
         return jsonify(inventory_list), 200
@@ -652,6 +664,33 @@ def edit_user(target_user_id):
     finally:
         cur.close()
 
+# DELETE USER
+@app.route('/users/<int:target_user_id>', methods=['DELETE'])
+@jwt_required()
+def delete_user(target_user_id):
+    claims = get_jwt()
+    if claims.get('role') != 'admin':
+        return jsonify({"message": "Access Denied: Only Administrators can delete users."}), 403
+
+    current_user_id = str(get_jwt_identity())
+    if str(target_user_id) == current_user_id:
+        return jsonify({"message": "You cannot delete your own account."}), 400
+
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute("SELECT user_id FROM USERS WHERE user_id = %s", (target_user_id,))
+        if not cur.fetchone():
+            return jsonify({"message": f"User ID {target_user_id} not found."}), 404
+
+        cur.execute("DELETE FROM USERS WHERE user_id = %s", (target_user_id,))
+        mysql.connection.commit()
+        return jsonify({"message": f"User ID {target_user_id} deleted successfully."}), 200
+    except Exception as e:
+        mysql.connection.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
 # ROUTE: For PRODUCTS-----------------------------------------
 
 # GET ALL PRODUCTS
@@ -699,12 +738,23 @@ def get_branch_inventory(branch_id):
                 p.product_id,
                 p.product_name_official,
                 p.category_type,
+                pbc.barcode_value,
                 bi.batch_number,
                 bi.expiry_date,
                 bi.quantity_on_hand,
                 p.price_regular
             FROM BRANCH_INVENTORY bi
             JOIN PRODUCTS p ON bi.product_id = p.product_id
+            LEFT JOIN (
+                SELECT
+                    product_id,
+                    COALESCE(
+                        MAX(CASE WHEN is_primary = TRUE THEN barcode_value END),
+                        MIN(barcode_value)
+                    ) AS barcode_value
+                FROM PRODUCT_BARCODES
+                GROUP BY product_id
+            ) pbc ON p.product_id = pbc.product_id
             WHERE bi.branch_id = %s
             ORDER BY p.product_name_official ASC, bi.expiry_date ASC
         """
@@ -718,11 +768,12 @@ def get_branch_inventory(branch_id):
                 "product_id": item[1],
                 "product_name": item[2],
                 "category": item[3],
-                "batch_number": item[4],
+                "barcode": item[4],
+                "batch_number": item[5],
                 # Dates need to be converted to strings for JSON formatting
-                "expiry_date": item[5].strftime('%Y-%m-%d') if item[5] else None,
-                "quantity_on_hand": item[6],
-                "price": float(item[7]) if item[7] else 0.00
+                "expiry_date": item[6].strftime('%Y-%m-%d') if item[6] else None,
+                "quantity_on_hand": item[7],
+                "price": float(item[8]) if item[8] else 0.00
             })
 
         return jsonify(inventory_list), 200
@@ -928,6 +979,7 @@ def search_product():
                 p.product_id,
                 p.product_name_official, 
                 p.product_name_receipt,
+                pbc.barcode_value,
                 bi.batch_number, 
                 bi.expiry_date, 
                 bi.quantity_on_hand, 
@@ -936,10 +988,20 @@ def search_product():
             FROM BRANCH_INVENTORY bi
             JOIN PRODUCTS p ON bi.product_id = p.product_id
             JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
+            LEFT JOIN (
+                SELECT
+                    product_id,
+                    COALESCE(
+                        MAX(CASE WHEN is_primary = TRUE THEN barcode_value END),
+                        MIN(barcode_value)
+                    ) AS barcode_value
+                FROM PRODUCT_BARCODES
+                GROUP BY product_id
+            ) pbc ON p.product_id = pbc.product_id
             WHERE bi.branch_id = %s 
-              AND (p.product_name_official LIKE %s OR p.product_name_receipt LIKE %s OR bi.batch_number LIKE %s)
+              AND (p.product_name_official LIKE %s OR p.product_name_receipt LIKE %s OR bi.batch_number LIKE %s OR pbc.barcode_value LIKE %s)
         """
-        params = [current_branch_id, like_pattern, like_pattern, like_pattern]
+        params = [current_branch_id, like_pattern, like_pattern, like_pattern, like_pattern]
         if category:
             sql += " AND p.category_type = %s"
             params.append(category)
@@ -959,11 +1021,12 @@ def search_product():
                 "product_id": row[1],
                 "product_name": row[3] if row[3] else row[2],  # receipt name, fallback to official
                 "product_name_official": row[2],
-                "batch_number": row[4],
-                "expiry_date": row[5].strftime('%Y-%m-%d') if row[5] else None,
-                "quantity_on_hand": row[6],
-                "price": float(row[7]) if row[7] else 0.00,
-                "gondola_code": row[8]
+                "barcode": row[4],
+                "batch_number": row[5],
+                "expiry_date": row[6].strftime('%Y-%m-%d') if row[6] else None,
+                "quantity_on_hand": row[7],
+                "price": float(row[8]) if row[8] else 0.00,
+                "gondola_code": row[9]
             })
 
         return jsonify({

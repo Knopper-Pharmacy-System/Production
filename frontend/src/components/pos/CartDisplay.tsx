@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { db } from '../api/db';
+import { db } from '../../features/pos/api/db';
 
 function EditablePriceCell({ itemId, price, updateCartItemPrice }: { itemId: number; price: number; updateCartItemPrice: (id: number, price: number) => void }) {
   const [raw, setRaw] = useState(price === 0 ? '' : String(price));
@@ -41,10 +41,22 @@ interface CartItem {
 interface SuggestionItem {
   id: number;
   name: string;
-  batch: string;
+  barcode: string;
   price: number;
   stock: number;
 }
+
+const getInventoryBarcodeValue = (item: {
+  qr?: string;
+  qr_code?: string;
+  barcode?: string;
+  barcode_value?: string;
+  barcodeValue?: string;
+  product_barcode?: string;
+  primary_barcode?: string;
+  Barcode?: string;
+  BARCODE?: string;
+}) => item.barcode || item.barcode_value || item.barcodeValue || item.product_barcode || item.primary_barcode || item.Barcode || item.BARCODE || item.qr || item.qr_code || '—';
 
 interface CartDisplayProps {
   cartItems: CartItem[];
@@ -63,7 +75,6 @@ interface CartDisplayProps {
   setSelectedInventoryIndex: (index: number) => void;
   setInventoryItems: (items: any[]) => void;
   setCurrentPage: (page: number) => void;
-  setHasMore: (hasMore: boolean) => void;
   setShowInventoryModal: (show: boolean) => void;
   barcodeInputRef: React.RefObject<HTMLInputElement | null>;
   onAddToCart: (item: SuggestionItem) => void;
@@ -86,7 +97,6 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   setSelectedInventoryIndex,
   setInventoryItems,
   setCurrentPage,
-  setHasMore,
   setShowInventoryModal,
   barcodeInputRef,
   onAddToCart,
@@ -112,15 +122,15 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
         const results = await db.inventory
           .filter(item => {
             const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
-            const batch = (item.batch_number || item.batch || '').toLowerCase();
-            return name.includes(q) || batch.includes(q);
+            const barcode = getInventoryBarcodeValue(item).toLowerCase();
+            return name.includes(q) || barcode.includes(q);
           })
           .limit(8)
           .toArray();
         setSuggestions(results.map(item => ({
           id: item.id!,
           name: item.product_name_official || item.product_name || item.name || 'Unnamed',
-          batch: item.batch_number || item.batch || '—',
+          barcode: getInventoryBarcodeValue(item),
           price: item.price_regular || item.price || 0,
           stock: item.quantity_on_hand || item.quantity || 0,
         })));
@@ -181,7 +191,7 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
         <div className="shrink-0 border-b border-slate-100 bg-slate-50">
           <div className="grid grid-cols-[60px_1fr_100px_140px_160px] text-[11px] font-black uppercase tracking-wider text-slate-500 p-4">
             <span>#</span>
-            <span>Description / Batch</span>
+            <span>Description / Barcode</span>
             <span className="text-center">Qty</span>
             <span className="text-center">Unit Price</span>
             <span className="text-right pr-8">Total</span>
@@ -249,7 +259,7 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
                   >
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-slate-800 text-sm truncate">{item.name}</p>
-                      <p className="text-xs text-slate-400">Batch: {item.batch} &bull; Stock: {item.stock}</p>
+                      <p className="text-xs text-slate-400">Barcode: {item.barcode} &bull; Stock: {item.stock}</p>
                     </div>
                     <span className="ml-4 shrink-0 font-black text-[#062d8c] text-sm">₱{item.price.toFixed(2)}</span>
                   </div>
@@ -283,11 +293,10 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
           <button
             onClick={() => {
               setInventorySearch("");
-              setSelectedCategory("");
+              setSelectedCategory("MEDICINE");
               setSelectedInventoryIndex(0);
               setInventoryItems([]);
               setCurrentPage(0);
-              setHasMore(true);
               setShowInventoryModal(true);
             }}
             className="bg-[#062d8c] text-white px-8 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[#041848]"

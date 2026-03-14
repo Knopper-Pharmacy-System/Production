@@ -180,10 +180,21 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   return (
     <div className="flex flex-col gap-6 h-full overflow-hidden">
       {/* IDs */}
-      <div className="bg-white rounded-xl shadow-lg border border-slate-300 p-4 grid grid-cols-3 gap-6 shrink-0">
-        <div><span className="text-slate-600 text-sm">Term ID:</span> <span className="font-bold">{terminalId}</span></div>
-        <div><span className="text-slate-600 text-sm">Invoice No.:</span> <span className="font-bold">{invoiceNo}</span></div>
-        <div><span className="text-slate-600 text-sm">Trans No.:</span> <span className="font-bold">{transNo}</span></div>
+      <div className="shrink-0 rounded-2xl border border-slate-300 bg-white p-4 shadow-lg">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-700 whitespace-nowrap">
+            <span className="uppercase tracking-wide text-slate-500">Term ID:</span>{" "}
+            <span className="text-base font-black text-[#062d8c]">{terminalId}</span>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-700 whitespace-nowrap">
+            <span className="uppercase tracking-wide text-slate-500">Invoice No.:</span>{" "}
+            <span className="text-base font-black text-[#062d8c]">{invoiceNo}</span>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm font-bold text-slate-700 whitespace-nowrap">
+            <span className="uppercase tracking-wide text-slate-500">Trans No.:</span>{" "}
+            <span className="text-base font-black text-[#062d8c]">{transNo}</span>
+          </div>
+        </div>
       </div>
 
       {/* Cart Table */}

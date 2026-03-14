@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Menu, Bell, Wifi, WifiOff } from "lucide-react";
-import bannerLogo from "../assets/banner_logo.png";
+import bannerLogo from "../../assets/banner_logo.png";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 

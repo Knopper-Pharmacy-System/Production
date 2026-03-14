@@ -13,9 +13,9 @@ import {
   Check,
   X,
 } from "lucide-react";
-import AdminSidebar from "../components/AdminSidebar";
-import AdminHeader from "../components/AdminHeader";
-import { getToken } from "../hooks/useAuth";
+import AdminSidebar from "../../components/admin/AdminSidebar";
+import AdminHeader from "../../components/admin/AdminHeader";
+import { getToken } from "../../hooks/useAuth";
 
 // --- Types -------------------------------------------------------------------
 

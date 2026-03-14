@@ -19,11 +19,11 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import AdminSidebar from "../components/AdminSidebar";
-import AdminHeader from "../components/AdminHeader";
-import LowStocksModal from "../components/LowStocksModal";
-import NearExpiryModal from "../components/NearExpiryModal";
-import { getToken } from "../hooks/useAuth";
+import AdminSidebar from "../../components/admin/AdminSidebar";
+import AdminHeader from "../../components/admin/AdminHeader";
+import LowStocksModal from "../../components/admin/LowStocksModal";
+import NearExpiryModal from "../../components/admin/NearExpiryModal";
+import { getToken } from "../../hooks/useAuth";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 

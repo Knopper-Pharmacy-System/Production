@@ -5,6 +5,7 @@ type Props = {
 	isSubmitting?: boolean;
 	onSubmit: (amount: number) => Promise<void> | void;
 	onResetSaved?: () => Promise<void> | void;
+	lastClosingBalance?: number | null;
 	title?: string;
 	description?: string;
 	actionLabel?: string;
@@ -17,6 +18,7 @@ function OpeningBalanceModal({
 	isSubmitting = false,
 	onSubmit,
 	onResetSaved,
+	lastClosingBalance,
 	title = "Opening Balance",
 	description = "Count your bills and coins to start this cashier shift.",
 	actionLabel = "Open Station",
@@ -89,6 +91,23 @@ function OpeningBalanceModal({
 		inputRefs.current[0]?.focus();
 	};
 
+	const handleLoadData = () => {
+		if (lastClosingBalance == null || lastClosingBalance <= 0) return;
+		// Distribute the closing balance into denominations (largest first)
+		let remaining = Math.round(lastClosingBalance);
+		const newCounts: Record<number, number> = {};
+		for (const denom of DENOMINATIONS) {
+			if (remaining <= 0) break;
+			const count = Math.floor(remaining / denom);
+			if (count > 0) {
+				newCounts[denom] = count;
+				remaining -= count * denom;
+			}
+		}
+		setCounts(newCounts);
+		setError(null);
+	};
+
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
 			<div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
@@ -150,6 +169,16 @@ function OpeningBalanceModal({
 					>
 						Reset
 					</button>
+					{lastClosingBalance != null && lastClosingBalance > 0 && (
+						<button
+							type="button"
+							disabled={isSubmitting}
+							onClick={handleLoadData}
+							className="rounded-xl border border-amber-300 bg-amber-50 px-6 py-3 text-sm font-black uppercase tracking-wide text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							Load Data (₱{lastClosingBalance.toFixed(2)})
+						</button>
+					)}
 					{onResetSaved && (
 						<button
 							type="button"

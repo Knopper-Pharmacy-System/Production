@@ -12,10 +12,10 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-import AdminSidebar from "../components/AdminSidebar";
-import AdminHeader from "../components/AdminHeader";
-import CreateUserModal from "../components/CreateUserModal";
-import { getToken } from "../hooks/useAuth";
+import AdminSidebar from "../../components/admin/AdminSidebar";
+import AdminHeader from "../../components/admin/AdminHeader";
+import CreateUserModal from "../../components/admin/CreateUserModal";
+import { getToken } from "../../hooks/useAuth";
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;

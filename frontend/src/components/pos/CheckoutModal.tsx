@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC } from "react";
 import { ShoppingCart } from "lucide-react";
 
@@ -21,7 +21,7 @@ type CheckoutModalProps = {
   amountDue: number;
   isProcessing: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (tendered: number) => void;
 };
 
 const CheckoutModal: FC<CheckoutModalProps> = ({
@@ -38,13 +38,22 @@ const CheckoutModal: FC<CheckoutModalProps> = ({
   onConfirm,
 }) => {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const tenderRef = useRef<HTMLInputElement>(null);
+  const [tenderInput, setTenderInput] = useState("");
+
+  const tendered = parseFloat(tenderInput) || 0;
+  const change = tendered - amountDue;
+  const canConfirm = tendered >= amountDue;
 
   useEffect(() => {
-    if (isOpen) overlayRef.current?.focus();
+    if (isOpen) {
+      setTenderInput("");
+      setTimeout(() => tenderRef.current?.focus(), 80);
+    }
   }, [isOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Enter" && !isProcessing) { e.preventDefault(); onConfirm(); }
+    if (e.key === "Enter" && !isProcessing && canConfirm) { e.preventDefault(); onConfirm(tendered); }
     if (e.key === "Escape") { e.preventDefault(); onClose(); }
   };
 
@@ -118,6 +127,33 @@ const CheckoutModal: FC<CheckoutModalProps> = ({
           </div>
         </div>
 
+        {/* Cash Tendered */}
+        <div className="border-t border-slate-200 px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <label className="text-sm font-black uppercase tracking-wide text-slate-700 shrink-0">Cash Tendered</label>
+            <input
+              ref={tenderRef}
+              type="number"
+              min={0}
+              step="0.01"
+              value={tenderInput}
+              onChange={(e) => setTenderInput(e.target.value)}
+              placeholder={`≥ ₱${amountDue.toFixed(2)}`}
+              className="w-48 rounded-xl border-2 border-slate-300 px-4 py-2 text-right text-lg font-black outline-none focus:border-[#062d8c]"
+            />
+          </div>
+          {tendered > 0 && (
+            <div className={`flex items-center justify-between rounded-xl px-4 py-3 ${change >= 0 ? "bg-emerald-50 border border-emerald-200" : "bg-red-50 border border-red-200"}`}>
+              <span className={`text-sm font-black uppercase tracking-wide ${change >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {change >= 0 ? "Change" : "Insufficient"}
+              </span>
+              <span className={`text-2xl font-black ${change >= 0 ? "text-emerald-700" : "text-red-600"}`}>
+                ₱{Math.abs(change).toFixed(2)}
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Actions */}
         <div className="flex gap-3 border-t border-slate-200 px-6 py-4">
           <button
@@ -128,8 +164,8 @@ const CheckoutModal: FC<CheckoutModalProps> = ({
             Cancel
           </button>
           <button
-            onClick={onConfirm}
-            disabled={isProcessing}
+            onClick={() => onConfirm(tendered)}
+            disabled={isProcessing || !canConfirm}
             className="flex-1 rounded-xl bg-emerald-600 py-3 font-black text-white shadow hover:bg-emerald-700 disabled:opacity-50"
           >
             {isProcessing ? "Processing…" : "Confirm Payment"}

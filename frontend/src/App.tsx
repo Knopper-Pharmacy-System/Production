@@ -2,9 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
 import LoginPage from "./pages/LoginPage";
 import CashierPosPage from "./pages/pos/CashierPosPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage";
-import UsersPage from "./pages/UsersPage";
-import AdminAuditSheet from "./pages/AdminAuditSheetPage";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+import UsersPage from "./pages/admin/UsersPage";
+import AdminAuditSheet from "./pages/admin/AdminAuditSheetPage";
+import SettingsPage from "./pages/admin/SettingsPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -89,6 +90,14 @@ function App() {
           element={
             <ProtectedRoute expectedRole="admin">
               <AdminAuditSheet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

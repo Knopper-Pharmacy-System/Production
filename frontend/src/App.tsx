@@ -9,7 +9,7 @@ import SettingsPage from "./pages/admin/SettingsPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
-import AdminInventoryPage from "./pages/AdminInventoryPage";
+import AdminInventoryPage from "./pages/admin/AdminInventoryPage";
 
 type AllowedRole = "admin" | "cashier" | "staff" | "omvb_manager";
 
@@ -92,6 +92,14 @@ function App() {
           element={
             <ProtectedRoute expectedRole="admin">
               <AdminAuditSheet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

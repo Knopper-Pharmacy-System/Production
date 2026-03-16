@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Eye, EyeOff, UserPlus, Loader2 } from "lucide-react";
-import { getToken } from "../hooks/useAuth";
+import { getToken } from "../../hooks/useAuth";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

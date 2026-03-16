@@ -258,7 +258,6 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
             type="text"
             value={inventorySearch}
             onChange={e => { setInventorySearch(e.target.value); setSelectedInventoryIndex(0); setCurrentPage(0); }}
-            onKeyDown={handleModalKeyDown}
             placeholder="Search product name or barcode..."
             className="w-full px-5 py-4 border-2 border-[#1f4fc4] rounded-xl text-lg text-slate-800 bg-white outline-none focus:ring-2 focus:ring-blue-300 focus:border-[#062d8c]"
             autoFocus

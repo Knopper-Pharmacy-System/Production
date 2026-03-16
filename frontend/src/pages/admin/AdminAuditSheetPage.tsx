@@ -13,8 +13,9 @@ import {
   Check,
   X,
 } from "lucide-react";
-import AdminSidebar from "../components/AdminSidebar";
-import AdminHeader from "../components/AdminHeader";
+import AdminSidebar from "../../components/admin/AdminSidebar";
+import AdminHeader from "../../components/admin/AdminHeader";
+import { getToken } from "../../hooks/useAuth";
 
 // --- Types -------------------------------------------------------------------
 
@@ -43,6 +44,17 @@ interface DiscrepancyEntry {
   physicalQty: number;
   variance: number;
   accepted: boolean;
+}
+
+interface ApiInventoryItem {
+  inventory_id: number;
+  product_id: number;
+  product_name?: string;
+  product_name_official?: string;
+  category?: string;
+  barcode?: string | null;
+  quantity_on_hand: number;
+  gondola_code?: string;
 }
 
 // --- Mock Data ----------------------------------------------------------------
@@ -153,6 +165,16 @@ const INITIAL_DISCREPANCY: DiscrepancyEntry[] = [
   },
 ];
 
+const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
+
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  "BMC MAIN": 1,
+  "DIVERSION BRANCH": 2,
+  "PANGANIBAN BRANCH": 3,
+};
+const ITEMS_PER_PAGE = 20;
+
 const AUDIT_BRANCHES = [
   "BMC MAIN",
   "DIVERSION BRANCH",
@@ -170,6 +192,13 @@ const CLASS_COLORS: Record<Classification, string> = {
   "Groceries Supplies": "#ffc057",
   "Medicines Supplies": "#00aeff",
   "Medical Supplies": "#00c354",
+};
+
+const mapCategoryToClassification = (category?: string): Classification => {
+  const normalizedCategory = (category || "").trim().toUpperCase();
+  if (normalizedCategory === "MEDICINE") return "Medicines Supplies";
+  if (normalizedCategory === "GROCERY") return "Groceries Supplies";
+  return "Medical Supplies";
 };
 
 // --- Sub-components ----------------------------------------------------------
@@ -242,9 +271,15 @@ function VarianceBadge({ value }: { value: number }) {
 export default function AdminAuditSheet() {
   const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [lastSync, setLastSync] = useState(new Date());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState("BMC MAIN");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isLoadingItems, setIsLoadingItems] = useState(false);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  const [isApplyingAdjustment, setIsApplyingAdjustment] = useState(false);
 
   const [items, setItems] = useState<AuditItem[]>(INITIAL_ITEMS);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -272,6 +307,64 @@ export default function AdminAuditSheet() {
     };
   }, []);
 
+  useEffect(() => {
+    const fetchBranchInventory = async () => {
+      const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+      if (!branchId) {
+        setItemsError("Invalid branch selected.");
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        setItemsError("No auth token found. Please log in again.");
+        return;
+      }
+
+      setIsLoadingItems(true);
+      setItemsError(null);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/inventory/branch/${branchId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setItemsError(data.message || data.error || "Failed to load inventory.");
+          return;
+        }
+
+        const mappedItems: AuditItem[] = (data as ApiInventoryItem[]).map((item) => ({
+          id: Number(item.inventory_id),
+          name:
+            item.product_name_official ||
+            item.product_name ||
+            `Product #${item.product_id}`,
+          sku: item.barcode ? String(item.barcode) : String(item.product_id),
+          location: item.gondola_code || "—",
+          classification: mapCategoryToClassification(item.category),
+          supplier: "—",
+          physicalQty: Number(item.quantity_on_hand || 0),
+          systemQty: Number(item.quantity_on_hand || 0),
+        }));
+
+        setItems(mappedItems);
+        setDiscrepancy([]);
+        setLastSync(new Date());
+      } catch {
+        setItemsError("Network error while loading inventory.");
+      } finally {
+        setIsLoadingItems(false);
+      }
+    };
+
+    fetchBranchInventory();
+  }, [selectedBranch]);
+
   const stats = useMemo(
     () => ({
       total: items.length,
@@ -284,43 +377,140 @@ export default function AdminAuditSheet() {
     [items],
   );
 
+  const filteredItems = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    if (!normalizedSearch) return items;
+
+    return items.filter((item) => {
+      return (
+        item.name.toLowerCase().includes(normalizedSearch) ||
+        item.sku.toLowerCase().includes(normalizedSearch) ||
+        item.location.toLowerCase().includes(normalizedSearch) ||
+        item.classification.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [items, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const paginatedItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredItems, currentPage]);
+
+  const pageStart =
+    filteredItems.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const pageEnd = Math.min(currentPage * ITEMS_PER_PAGE, filteredItems.length);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBranch]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   function startEdit(item: AuditItem) {
     setEditingId(item.id);
     setEditQty(String(item.physicalQty));
   }
 
-  function commitEdit(id: number) {
-    const newQty = Math.max(0, parseInt(editQty, 10) || 0);
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, physicalQty: newQty } : i)),
-    );
-    setEditingId(null);
+  async function persistAuditAdjustment(
+    target: AuditItem,
+    newQty: number,
+    reason: string,
+  ): Promise<boolean> {
+    const token = getToken();
+    if (!token) {
+      setItemsError("No auth token found. Please log in again.");
+      return false;
+    }
 
-    setItems((prev) => {
-      const item = prev.find((i) => i.id === id);
-      if (!item) return prev;
-      const variance = item.physicalQty - item.systemQty;
-      setDiscrepancy((d) => {
-        const exists = d.find((e) => e.id === id);
-        if (variance === 0) return d.filter((e) => e.id !== id);
+    const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+    if (!branchId) {
+      setItemsError("Invalid branch selected.");
+      return false;
+    }
+
+    setIsApplyingAdjustment(true);
+    setItemsError(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/inventory/audit-adjustment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          inventory_id: target.id,
+          branch_id: branchId,
+          physical_qty: newQty,
+          reason,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setItemsError(
+          data.message || data.error || "Failed to apply inventory adjustment.",
+        );
+        return false;
+      }
+
+      setLastSync(new Date());
+      return true;
+    } catch {
+      setItemsError("Network error while applying adjustment.");
+      return false;
+    } finally {
+      setIsApplyingAdjustment(false);
+    }
+  }
+
+  async function commitEdit(id: number) {
+    const newQty = Math.max(0, parseInt(editQty, 10) || 0);
+    const target = items.find((item) => item.id === id);
+    if (!target) return;
+
+    const variance = newQty - target.systemQty;
+    const applied = await persistAuditAdjustment(target, newQty, "Counting Error");
+    if (!applied) return;
+
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === id ? { ...i, physicalQty: newQty, systemQty: newQty } : i,
+      ),
+    );
+
+    if (variance !== 0) {
+      setDiscrepancy((prev) => {
+        const exists = prev.find((entry) => entry.id === id);
         const entry: DiscrepancyEntry = {
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          supplier: item.supplier,
-          systemQty: item.systemQty,
-          physicalQty: item.physicalQty,
+          id: target.id,
+          name: target.name,
+          sku: target.sku,
+          supplier: target.supplier,
+          systemQty: target.systemQty,
+          physicalQty: newQty,
           variance,
           accepted: exists?.accepted ?? false,
         };
-        if (exists) return d.map((e) => (e.id === id ? entry : e));
-        return [...d, entry];
+
+        if (exists) return prev.map((item) => (item.id === id ? entry : item));
+        return [entry, ...prev];
       });
-      return prev;
-    });
+    }
+
+    setEditingId(null);
   }
 
-  function applyAdjustment() {
+  async function applyAdjustment() {
     const target = items.find(
       (i) =>
         i.sku === scanSku ||
@@ -332,13 +522,23 @@ export default function AdminAuditSheet() {
     }
     const newQty = Math.max(0, parseInt(correctQty, 10) || 0);
     const variance = newQty - target.systemQty;
+    const applied = await persistAuditAdjustment(
+      target,
+      newQty,
+      adjReason || "Count correction",
+    );
+    if (!applied) return;
 
     setItems((prev) =>
-      prev.map((i) => (i.id === target.id ? { ...i, physicalQty: newQty } : i)),
+      prev.map((i) =>
+        i.id === target.id ? { ...i, physicalQty: newQty, systemQty: newQty } : i,
+      ),
     );
+
     setDiscrepancy((prev) => {
-      const exists = prev.find((e) => e.id === target.id);
-      if (variance === 0) return prev.filter((e) => e.id !== target.id);
+      const exists = prev.find((entry) => entry.id === target.id);
+      if (variance === 0) return prev.filter((entry) => entry.id !== target.id);
+
       const entry: DiscrepancyEntry = {
         id: target.id,
         name: target.name,
@@ -349,9 +549,11 @@ export default function AdminAuditSheet() {
         variance,
         accepted: exists?.accepted ?? false,
       };
-      if (exists) return prev.map((e) => (e.id === target.id ? entry : e));
-      return [...prev, entry];
+
+      if (exists) return prev.map((item) => (item.id === target.id ? entry : item));
+      return [entry, ...prev];
     });
+
     setScanSku("");
     setCorrectQty("0");
     setAdjReason("");
@@ -372,11 +574,27 @@ export default function AdminAuditSheet() {
 
   return (
     <div
-      className="min-h-screen w-full overflow-y-auto overflow-x-hidden"
+      className="min-h-screen w-full overflow-y-auto overflow-x-hidden relative"
       style={{
-        background: "linear-gradient(180deg, #062d8c 40%, #3266e6 100%)",
+        background:
+          "radial-gradient(ellipse 80% 50% at 60% -10%, rgba(99,145,255,0.18) 0%, transparent 70%), linear-gradient(160deg, #041e6e 0%, #062d8c 35%, #0b3fbe 65%, #1d57d2 100%)",
       }}
     >
+      <div
+        className="absolute inset-x-0 top-0 h-[320px] pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 100%)",
+        }}
+      />
+      <div
+        className="absolute -top-24 -left-16 w-72 h-72 rounded-full blur-3xl pointer-events-none"
+        style={{ background: "rgba(124, 160, 255, 0.18)" }}
+      />
+      <div
+        className="absolute top-40 right-0 w-96 h-96 rounded-full blur-3xl pointer-events-none"
+        style={{ background: "rgba(8, 29, 96, 0.22)" }}
+      />
       <AdminSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -386,13 +604,27 @@ export default function AdminAuditSheet() {
         }}
       />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-5">
+      <div className="relative z-10 w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* Header */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           currentTime={currentTime}
+          lastSync={lastSync}
           isOnline={isOnline}
         />
+
+        {itemsError && (
+          <div
+            className="px-4 py-3 rounded-xl text-sm font-semibold"
+            style={{
+              background: "rgba(230,4,4,0.12)",
+              color: "#a30000",
+              border: "1px solid rgba(230,4,4,0.25)",
+            }}
+          >
+            {itemsError}
+          </div>
+        )}
 
         {/* Main Card */}
         <div
@@ -550,6 +782,25 @@ export default function AdminAuditSheet() {
 
           {/* --- Inventory Table -------------------------------------------- */}
           <div className="px-7 overflow-x-auto">
+            <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search item, SKU, location, classification..."
+                className="h-10 w-full sm:w-[360px] rounded-xl px-4 text-sm outline-none"
+                style={{
+                  border: "1px solid #c9cfdb",
+                  color: "#001d63",
+                  background: "#fff",
+                }}
+              />
+            </div>
+            {isLoadingItems && (
+              <div className="mb-3 text-sm font-semibold" style={{ color: "#4f5f87" }}>
+                Loading branch inventory...
+              </div>
+            )}
             <div
               className="rounded-xl overflow-hidden"
               style={{ border: "1px solid rgba(47,47,47,0.4)" }}
@@ -591,7 +842,7 @@ export default function AdminAuditSheet() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, idx) => {
+                  {paginatedItems.map((item, idx) => {
                     const variance = item.physicalQty - item.systemQty;
                     return (
                       <tr
@@ -728,6 +979,42 @@ export default function AdminAuditSheet() {
                   })}
                 </tbody>
               </table>
+            </div>
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <p className="text-xs font-semibold" style={{ color: "#4f5f87" }}>
+                Showing {pageStart}-{pageEnd} of {filteredItems.length} items
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 px-3 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #d1d5db",
+                    color: "#1f3a8a",
+                  }}
+                >
+                  Previous
+                </button>
+                <span className="text-xs font-bold" style={{ color: "#1f3a8a" }}>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="h-8 px-3 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #d1d5db",
+                    color: "#1f3a8a",
+                  }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
 
@@ -881,14 +1168,16 @@ export default function AdminAuditSheet() {
                   {/* Apply Button */}
                   <button
                     onClick={applyAdjustment}
+                    disabled={isApplyingAdjustment}
                     className="h-10 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90"
                     style={{
                       background: "#002379",
                       border: "1px solid #dad8d8",
                       boxShadow: "0 4px 8px rgba(0,0,0,0.12)",
+                      opacity: isApplyingAdjustment ? 0.7 : 1,
                     }}
                   >
-                    Apply Adjustment
+                    {isApplyingAdjustment ? "Applying..." : "Apply Adjustment"}
                   </button>
                 </div>
 

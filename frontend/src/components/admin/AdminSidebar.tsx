@@ -13,8 +13,8 @@ import {
   LogOut,
   ClipboardList,
 } from "lucide-react";
-import logoSolid from "../assets/logo_solid.png";
-import { logout } from "../hooks/useAuth";
+import logoSolid from "../../assets/logo_solid.png";
+import { logout } from "../../hooks/useAuth";
 
 interface AdminSidebarProps {
   isOpen: boolean;
@@ -97,10 +97,91 @@ function SidebarItem({
   );
 }
 
-function UserProfile() {
+function ExitConfirmModal({
+  isOpen,
+  onCancel,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#02124a]/70 backdrop-blur-[2px] p-4">
+      <div
+        className="w-full max-w-md rounded-2xl p-6 relative overflow-hidden"
+        style={{
+          background:
+            "radial-gradient(circle at top left, rgba(117,166,255,0.22) 0%, transparent 38%), linear-gradient(150deg, #052275 0%, #0a3aaa 55%, #1d57d2 100%)",
+          border: "1px solid rgba(255,255,255,0.18)",
+          boxShadow:
+            "0 22px 46px rgba(0, 16, 70, 0.45), inset 0 1px 0 rgba(255,255,255,0.14)",
+        }}
+      >
+        <div
+          className="absolute inset-x-0 top-0 h-1"
+          style={{ background: "linear-gradient(90deg, #88b1ff 0%, #cb3cff 100%)" }}
+        />
+
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-2xl"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.1) 100%)",
+              border: "1px solid rgba(255,255,255,0.22)",
+            }}
+          >
+            <LogOut size={22} color="#ffd6d6" />
+          </div>
+          <div>
+            <h3 className="text-lg font-black" style={{ color: "#eef4ff" }}>
+              Exit Admin Panel?
+            </h3>
+            <p className="text-sm mt-1" style={{ color: "rgba(221,232,255,0.78)" }}>
+              You will be logged out and returned to the login screen.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl px-5 py-3 text-sm font-black uppercase tracking-wide transition-colors"
+            style={{
+              border: "1px solid rgba(193,214,255,0.38)",
+              background: "rgba(255,255,255,0.12)",
+              color: "#e6efff",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-xl px-5 py-3 text-sm font-black uppercase tracking-wide text-white transition-opacity hover:opacity-90"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(238,51,51,0.95) 0%, rgba(198,29,29,0.95) 100%)",
+              border: "1px solid rgba(255,198,198,0.45)",
+              boxShadow: "0 10px 20px rgba(119, 15, 15, 0.3)",
+            }}
+          >
+            Exit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserProfile({ onClick }: { onClick: () => void }) {
   return (
     <button
-      onClick={logout}
+      onClick={onClick}
       className="flex items-center w-full px-1.5 py-1.5 rounded-[7px] transition-colors"
       style={{ background: "transparent", border: "none", cursor: "pointer" }}
       onMouseEnter={(e) => {
@@ -160,6 +241,7 @@ export default function AdminSidebar({
   onNavigate,
 }: AdminSidebarProps) {
   const [dashboardExpanded, setDashboardExpanded] = useState(true);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const navigate = useNavigate();
 
   const NAV_ROUTES: Record<string, string> = {
@@ -168,6 +250,7 @@ export default function AdminSidebar({
     Users: "/admin/users",
     Inventory: "/admin/inventory",
     "Audit Sheet": "/admin/audit-sheet",
+    Settings: "/admin/settings",
   };
 
   const handleNav = (item: string) => {
@@ -188,6 +271,12 @@ export default function AdminSidebar({
           onClick={onClose}
         />
       )}
+
+      <ExitConfirmModal
+        isOpen={showExitConfirm}
+        onCancel={() => setShowExitConfirm(false)}
+        onConfirm={() => logout()}
+      />
 
       {/* Side Panel */}
       <div
@@ -398,7 +487,7 @@ export default function AdminSidebar({
 
           <Divider />
 
-          <UserProfile />
+          <UserProfile onClick={() => setShowExitConfirm(true)} />
         </div>
       </div>
     </>

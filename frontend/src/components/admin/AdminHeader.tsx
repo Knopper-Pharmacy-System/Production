@@ -1,11 +1,12 @@
+import { useEffect, useState } from "react";
 import { Menu, Bell, Wifi, WifiOff } from "lucide-react";
-import bannerLogo from "../assets/banner_logo.png";
+import bannerLogo from "../../assets/banner_logo.png";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export interface AdminHeaderProps {
   onMenuClick: () => void;
-  currentTime: Date;
+  currentTime?: Date;
   lastSync?: Date;
   isOnline: boolean;
 }
@@ -35,16 +36,28 @@ export default function AdminHeader({
   lastSync,
   isOnline,
 }: AdminHeaderProps) {
+  const [internalNow, setInternalNow] = useState<Date>(new Date());
+
+  useEffect(() => {
+    if (currentTime) return;
+    const timer = setInterval(() => setInternalNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, [currentTime]);
+
+  const displayTime = currentTime ?? internalNow;
+
   return (
     <div
-      className="rounded-2xl px-4 sm:px-5 py-4"
+      className="rounded-2xl px-4 sm:px-5 py-5"
       style={{
-        background: "#0335af",
-        border: "1px solid rgba(255,255,255,0.2)",
-        boxShadow: "0 0 20px rgba(0,0,0,0.25)",
+        background:
+          "radial-gradient(circle at top left, rgba(117,166,255,0.22) 0%, transparent 28%), linear-gradient(135deg, #03257b 0%, #0b3fbe 52%, #1d57d2 100%)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        boxShadow:
+          "0 24px 50px rgba(0,14,61,0.28), inset 0 1px 0 rgba(255,255,255,0.14)",
       }}
     >
-      <div className="flex flex-col gap-3 xl:grid xl:grid-cols-[1fr_auto_1fr] xl:items-center xl:gap-4">
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[1fr_auto_1fr] xl:items-center xl:gap-5">
         {/* Left: Menu + Logo */}
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -52,7 +65,8 @@ export default function AdminHeader({
             className="p-1.5 rounded-lg transition-colors"
             style={{
               color: "rgba(255,255,255,0.8)",
-              background: "rgba(255,255,255,0.08)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.08) 100%)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18)",
               border: "none",
               cursor: "pointer",
             }}
@@ -66,92 +80,77 @@ export default function AdminHeader({
               className="h-9 sm:h-10 object-contain object-left"
               style={{ opacity: 0.85 }}
             />
-            <div className="hidden sm:flex items-center gap-2 mt-1">
-              <span
-                className="text-xs font-semibold tracking-wide"
-                style={{ color: "rgba(228,226,226,0.86)" }}
-              >
-                TERMINAL ID: 000
-              </span>
-              <span
-                className="text-xs"
-                style={{ color: "rgba(255,255,255,0.4)" }}
-              >
-                |
-              </span>
-              <span
-                className="text-xs font-semibold"
-                style={{ color: "rgba(228,226,226,0.86)" }}
-              >
-                ROLE: ADMIN
-              </span>
-            </div>
           </div>
         </div>
 
-        {/* Date/Time Card */}
+        {/* Date/Time/Sync */}
         <div
-          className="flex items-center justify-between sm:justify-start gap-4 px-4 sm:px-5 py-3 rounded-2xl tabular-nums w-full xl:w-auto"
-          style={{
-            background: "rgba(0,20,69,0.7)",
-            border: "1px solid rgba(255,255,255,0.2)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
-          }}
+          className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 tabular-nums w-full xl:w-auto"
+          style={{ color: "#d8e4ff" }}
         >
-          <div className="flex flex-col min-w-[150px]">
+          <div className="flex items-center gap-2">
             <span
-              className="font-semibold tracking-widest uppercase"
-              style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
+              className="text-[10px] font-semibold tracking-widest uppercase"
+              style={{ color: "rgba(190,140,0,0.85)" }}
             >
-              Current Date
+              Date
             </span>
-            <span
-              className="text-sm font-semibold mt-0.5 whitespace-nowrap"
-              style={{ color: "#c9d9ff" }}
-            >
-              {formatDate(currentTime)}
+            <span className="text-sm font-semibold whitespace-nowrap">
+              {formatDate(displayTime)}
             </span>
           </div>
-          <div
-            className="w-px h-10"
-            style={{ background: "rgba(255,255,255,0.2)" }}
-          />
-          <div className="flex flex-col min-w-[110px]">
+          <span className="hidden sm:inline" style={{ color: "rgba(255,255,255,0.35)" }}>
+            •
+          </span>
+          <div className="flex items-center gap-2">
             <span
-              className="font-semibold tracking-widest uppercase"
-              style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
+              className="text-[10px] font-semibold tracking-widest uppercase"
+              style={{ color: "rgba(190,140,0,0.85)" }}
             >
-              Current Time
+              Time
             </span>
-            <span
-              className="text-sm font-semibold mt-0.5 whitespace-nowrap"
-              style={{ color: "#c9d9ff" }}
-            >
-              {formatTime(currentTime)}
+            <span className="text-sm font-semibold whitespace-nowrap">
+              {formatTime(displayTime)}
             </span>
           </div>
-          <div
-            className="w-px h-10"
-            style={{ background: "rgba(255,255,255,0.2)" }}
-          />
-          <div className="flex flex-col min-w-[110px]">
+          <span className="hidden sm:inline" style={{ color: "rgba(255,255,255,0.35)" }}>
+            •
+          </span>
+          <div className="flex items-center gap-2">
             <span
-              className="font-semibold tracking-widest uppercase"
-              style={{ fontSize: "9px", color: "rgba(190,140,0,0.85)" }}
+              className="text-[10px] font-semibold tracking-widest uppercase"
+              style={{ color: "rgba(190,140,0,0.85)" }}
             >
-              Last Sync
+              Sync
             </span>
-            <span
-              className="text-sm font-semibold mt-0.5 whitespace-nowrap"
-              style={{ color: "#c9d9ff" }}
-            >
+            <span className="text-sm font-semibold whitespace-nowrap">
               {lastSync ? formatTime(lastSync) : "--:--:--"}
             </span>
           </div>
         </div>
 
         {/* Right: Status + Bell */}
-        <div className="flex items-center gap-3 justify-end">
+        <div className="flex items-center gap-3 justify-end flex-wrap">
+          <div className="hidden md:flex items-center gap-2 mr-2">
+            <span
+              className="text-xs font-semibold tracking-wide"
+              style={{ color: "rgba(228,226,226,0.86)" }}
+            >
+              TERMINAL ID: 000
+            </span>
+            <span
+              className="text-xs"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              |
+            </span>
+            <span
+              className="text-xs font-semibold"
+              style={{ color: "rgba(228,226,226,0.86)" }}
+            >
+              ROLE: ADMIN
+            </span>
+          </div>
           <span
             className="hidden sm:inline text-sm font-semibold"
             style={{ color: "rgba(255,255,255,0.6)" }}
@@ -180,7 +179,9 @@ export default function AdminHeader({
           <button
             className="p-2 rounded-lg transition-colors"
             style={{
-              background: "rgba(217,217,217,0.21)",
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.12) 100%)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
               border: "none",
               cursor: "pointer",
             }}

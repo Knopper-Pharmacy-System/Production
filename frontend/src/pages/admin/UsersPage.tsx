@@ -12,10 +12,10 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-import AdminSidebar from "../components/AdminSidebar";
-import AdminHeader from "../components/AdminHeader";
-import CreateUserModal from "../components/CreateUserModal";
-import { getToken } from "../hooks/useAuth";
+import AdminSidebar from "../../components/admin/AdminSidebar";
+import AdminHeader from "../../components/admin/AdminHeader";
+import CreateUserModal from "../../components/admin/CreateUserModal";
+import { getToken } from "../../hooks/useAuth";
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
@@ -117,7 +117,6 @@ const STATUS_COLORS: Record<Status, { bg: string; text: string; dot: string }> =
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function UsersPage() {
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [lastSync, setLastSync] = useState<Date>(new Date());
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -182,11 +181,6 @@ export default function UsersPage() {
       window.removeEventListener("online", handleStatus);
       window.removeEventListener("offline", handleStatus);
     };
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -307,7 +301,8 @@ export default function UsersPage() {
     <div
       className="min-h-screen w-full overflow-y-auto overflow-x-hidden"
       style={{
-        background: "linear-gradient(180deg, #062d8c 40%, #3266e6 100%)",
+        background:
+          "radial-gradient(ellipse 80% 50% at 60% -10%, rgba(99,145,255,0.18) 0%, transparent 70%), linear-gradient(160deg, #041e6e 0%, #062d8c 35%, #0b3fbe 65%, #1d57d2 100%)",
       }}
     >
       <AdminSidebar
@@ -341,19 +336,38 @@ export default function UsersPage() {
         {/* ── Header Card ──────────────────────────────────────────────────── */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
-          currentTime={currentTime}
           lastSync={lastSync}
           isOnline={isOnline}
         />
 
         {/* ── User Management Bar ──────────────────────────────────────────── */}
-        <div className="flex items-center justify-between">
-          <h2
-            className="font-bold text-xl tracking-wide"
-            style={{ color: "rgba(193,227,255,0.9)" }}
+        <div className="flex items-start justify-between">
+          <div>
+            <h2
+              className="font-bold text-xl tracking-wide"
+              style={{ color: "rgba(193,227,255,0.9)" }}
+            >
+              User Management
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: "rgba(193,227,255,0.5)" }}>
+              Manage accounts, roles, and access across all branches
+            </p>
+          </div>
+          <button
+            onClick={fetchUsers}
+            disabled={isFetchingUsers}
+            className="flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-bold transition-opacity hover:opacity-80"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              color: "rgba(193,227,255,0.9)",
+              border: "1px solid rgba(193,227,255,0.2)",
+              cursor: isFetchingUsers ? "not-allowed" : "pointer",
+              opacity: isFetchingUsers ? 0.6 : 1,
+            }}
           >
-            User Management
-          </h2>
+            <UserCog size={15} />
+            {isFetchingUsers ? "Syncing..." : "Refresh"}
+          </button>
         </div>
 
         {/* ── KPI Cards ────────────────────────────────────────────────────── */}
@@ -362,39 +376,25 @@ export default function UsersPage() {
           <div
             className="rounded-xl p-5 relative overflow-hidden"
             style={{
-              background: "#f0f0f0",
-              border: "1px solid rgba(0,0,0,0.65)",
-              boxShadow: "0 0 40px 5px rgba(0,0,0,0.25)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(233,241,255,0.96) 100%)",
+              border: "1px solid rgba(77,108,196,0.24)",
+              boxShadow: "0 18px 42px rgba(1,24,84,0.18), inset 0 1px 0 rgba(255,255,255,0.88)",
             }}
           >
+            <div className="absolute inset-x-0 top-0 h-1" style={{ background: "linear-gradient(90deg, #3b6eff 0%, #7da8ff 100%)" }} />
             <div
               className="absolute top-3 right-3 p-1.5 rounded-lg"
               style={{ background: "rgba(0,59,205,0.1)" }}
             >
               <Users size={18} style={{ color: "#003bcd" }} />
             </div>
-            <p
-              className="text-base font-extrabold tracking-wide uppercase"
-              style={{ color: "#062d8c" }}
-            >
-              TOTAL USERS
-            </p>
-            <p
-              className="text-xs font-semibold mt-0.5"
-              style={{ color: "#636363" }}
-            >
-              All registered accounts
-            </p>
-            <p
-              className="font-extrabold mt-2 leading-none"
-              style={{ color: "#003bcd", fontSize: "3rem" }}
-            >
-              {totalUsers}
+            <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>TOTAL USERS</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "#636363" }}>All registered accounts</p>
+            <p className="font-extrabold mt-2 leading-none" style={{ color: "#003bcd", fontSize: "3rem" }}>
+              {isFetchingUsers ? "—" : totalUsers}
             </p>
             <div className="flex items-center gap-1 mt-3">
-              <span style={{ color: "#636363", fontSize: "10px" }}>
-                Across all branches
-              </span>
+              <span style={{ color: "#636363", fontSize: "10px" }}>Across all branches</span>
             </div>
           </div>
 
@@ -402,41 +402,26 @@ export default function UsersPage() {
           <div
             className="rounded-xl p-5 relative overflow-hidden"
             style={{
-              background: "#f0f0f0",
-              border: "1px solid rgba(0,0,0,0.65)",
-              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(233,241,255,0.96) 100%)",
+              border: "1px solid rgba(77,108,196,0.24)",
+              boxShadow: "0 18px 42px rgba(1,24,84,0.18), inset 0 1px 0 rgba(255,255,255,0.88)",
             }}
           >
+            <div className="absolute inset-x-0 top-0 h-1" style={{ background: "linear-gradient(90deg, #00bf2c 0%, #6effa0 100%)" }} />
             <div
               className="absolute top-3 right-3 p-1.5 rounded-lg"
               style={{ background: "rgba(0,191,44,0.1)" }}
             >
               <UserCheck size={18} style={{ color: "#00bf2c" }} />
             </div>
-            <p
-              className="text-base font-extrabold tracking-wide uppercase"
-              style={{ color: "#062d8c" }}
-            >
-              ACTIVE
-            </p>
-            <p
-              className="text-xs font-semibold mt-0.5"
-              style={{ color: "#636363" }}
-            >
-              Currently active accounts
-            </p>
-            <p
-              className="font-extrabold mt-2 leading-none"
-              style={{ color: "#00bf2c", fontSize: "3rem" }}
-            >
-              {activeUsers}
+            <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>ACTIVE</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "#636363" }}>Currently active accounts</p>
+            <p className="font-extrabold mt-2 leading-none" style={{ color: "#00bf2c", fontSize: "3rem" }}>
+              {isFetchingUsers ? "—" : activeUsers}
             </p>
             <div className="flex items-center gap-1 mt-3">
-              <span
-                className="font-bold"
-                style={{ color: "#00bf2c", fontSize: "10px" }}
-              >
-                {totalUsers - activeUsers} inactive
+              <span className="font-bold" style={{ color: "#00bf2c", fontSize: "10px" }}>
+                {isFetchingUsers ? "" : `${totalUsers - activeUsers} inactive`}
               </span>
             </div>
           </div>
@@ -445,39 +430,25 @@ export default function UsersPage() {
           <div
             className="rounded-xl p-5 relative overflow-hidden"
             style={{
-              background: "#f0f0f0",
-              border: "1px solid rgba(0,0,0,0.65)",
-              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(233,241,255,0.96) 100%)",
+              border: "1px solid rgba(77,108,196,0.24)",
+              boxShadow: "0 18px 42px rgba(1,24,84,0.18), inset 0 1px 0 rgba(255,255,255,0.88)",
             }}
           >
+            <div className="absolute inset-x-0 top-0 h-1" style={{ background: "linear-gradient(90deg, #cb3cff 0%, #e89dff 100%)" }} />
             <div
               className="absolute top-3 right-3 p-1.5 rounded-lg"
               style={{ background: "rgba(203,60,255,0.1)" }}
             >
               <ShieldCheck size={18} style={{ color: "#cb3cff" }} />
             </div>
-            <p
-              className="text-base font-extrabold tracking-wide uppercase"
-              style={{ color: "#062d8c" }}
-            >
-              ADMINS
-            </p>
-            <p
-              className="text-xs font-semibold mt-0.5"
-              style={{ color: "#636363" }}
-            >
-              Administrator accounts
-            </p>
-            <p
-              className="font-extrabold mt-2 leading-none"
-              style={{ color: "#cb3cff", fontSize: "3rem" }}
-            >
-              {adminCount}
+            <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>ADMINS</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "#636363" }}>Administrator accounts</p>
+            <p className="font-extrabold mt-2 leading-none" style={{ color: "#cb3cff", fontSize: "3rem" }}>
+              {isFetchingUsers ? "—" : adminCount}
             </p>
             <div className="flex items-center gap-1 mt-3">
-              <span style={{ color: "#636363", fontSize: "10px" }}>
-                Full system access
-              </span>
+              <span style={{ color: "#636363", fontSize: "10px" }}>Full system access</span>
             </div>
           </div>
 
@@ -485,39 +456,25 @@ export default function UsersPage() {
           <div
             className="rounded-xl p-5 relative overflow-hidden"
             style={{
-              background: "#f0f0f0",
-              border: "1px solid rgba(0,0,0,0.65)",
-              boxShadow: "0 4px 4px rgba(0,0,0,0.25)",
+              background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(233,241,255,0.96) 100%)",
+              border: "1px solid rgba(77,108,196,0.24)",
+              boxShadow: "0 18px 42px rgba(1,24,84,0.18), inset 0 1px 0 rgba(255,255,255,0.88)",
             }}
           >
+            <div className="absolute inset-x-0 top-0 h-1" style={{ background: "linear-gradient(90deg, #e6a800 0%, #ffd166 100%)" }} />
             <div
               className="absolute top-3 right-3 p-1.5 rounded-lg"
               style={{ background: "rgba(179,147,49,0.1)" }}
             >
               <UserCog size={18} style={{ color: "#b39331" }} />
             </div>
-            <p
-              className="text-base font-extrabold tracking-wide uppercase"
-              style={{ color: "#062d8c" }}
-            >
-              CASHIERS
-            </p>
-            <p
-              className="text-xs font-semibold mt-0.5"
-              style={{ color: "#636363" }}
-            >
-              POS operator accounts
-            </p>
-            <p
-              className="font-extrabold mt-2 leading-none"
-              style={{ color: "#b39331", fontSize: "3rem" }}
-            >
-              {cashierCount}
+            <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>CASHIERS</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: "#636363" }}>POS operator accounts</p>
+            <p className="font-extrabold mt-2 leading-none" style={{ color: "#b39331", fontSize: "3rem" }}>
+              {isFetchingUsers ? "—" : cashierCount}
             </p>
             <div className="flex items-center gap-1 mt-3">
-              <span style={{ color: "#636363", fontSize: "10px" }}>
-                POS access only
-              </span>
+              <span style={{ color: "#636363", fontSize: "10px" }}>POS access only</span>
             </div>
           </div>
         </div>
@@ -526,9 +483,9 @@ export default function UsersPage() {
         <div
           className="rounded-2xl p-6"
           style={{
-            background: "#f0f0f0",
-            border: "1px solid rgba(47,47,47,0.68)",
-            boxShadow: "0 4px 4px rgba(0,0,0,0.5)",
+            border: "1px solid rgba(115,139,205,0.24)",
+            background: "linear-gradient(180deg, #ffffff 0%, #f4f7ff 100%)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 28px rgba(11,37,97,0.09)",
           }}
         >
           {usersError && (
@@ -636,7 +593,7 @@ export default function UsersPage() {
             >
               <thead>
                 <tr style={{ background: "#062d8c" }}>
-                  {["Name", "Role", "Branch", "Status", "Last Login", ""].map(
+                  {["Name", "Role", "Branch", "Status", ""].map(
                     (col) => (
                       <th
                         key={col}
@@ -653,7 +610,7 @@ export default function UsersPage() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={5}
                       className="text-center py-10 text-sm"
                       style={{ color: "#999", background: "#fff" }}
                     >
@@ -742,14 +699,6 @@ export default function UsersPage() {
                             {user.status}
                           </span>
                         </div>
-                      </td>
-
-                      {/* Last Login */}
-                      <td
-                        className="px-4 py-3 text-xs whitespace-nowrap"
-                        style={{ color: "#666" }}
-                      >
-                        {user.lastLogin}
                       </td>
 
                       {/* Actions */}

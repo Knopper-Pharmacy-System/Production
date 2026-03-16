@@ -9,6 +9,8 @@ import SettingsPage from "./pages/admin/SettingsPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
+import AdminInventoryPage from "./pages/AdminInventoryPage";
+
 type AllowedRole = "admin" | "cashier" | "staff" | "omvb_manager";
 
 const normalizeRole = (role: string): AllowedRole | "" => {
@@ -94,10 +96,10 @@ function App() {
           }
         />
         <Route
-          path="/admin/settings"
+          path="/admin/inventory"
           element={
             <ProtectedRoute expectedRole="admin">
-              <SettingsPage />
+              <AdminInventoryPage />
             </ProtectedRoute>
           }
         />

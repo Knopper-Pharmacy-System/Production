@@ -166,6 +166,7 @@ export default function AdminSidebar({
     Dashboard: "/admin",
     Overview: "/admin",
     Users: "/admin/users",
+    Inventory: "/admin/inventory",
     "Audit Sheet": "/admin/audit-sheet",
   };
 

@@ -8,6 +8,8 @@ import AdminAuditSheet from "./pages/AdminAuditSheetPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
+import AdminInventoryPage from "./pages/AdminInventoryPage";
+
 type AllowedRole = "admin" | "cashier" | "staff" | "omvb_manager";
 
 const normalizeRole = (role: string): AllowedRole | "" => {
@@ -89,6 +91,14 @@ function App() {
           element={
             <ProtectedRoute expectedRole="admin">
               <AdminAuditSheet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/inventory"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminInventoryPage />
             </ProtectedRoute>
           }
         />

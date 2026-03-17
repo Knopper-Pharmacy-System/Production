@@ -189,7 +189,10 @@ function StockBar({ stock, maxStock }: { stock: number; maxStock: number }) {
           style={{ width: `${pct}%`, background: color }}
         />
       </div>
-      <span className="text-sm tabular-nums" style={{ color, minWidth: "24px" }}>
+      <span
+        className="text-sm tabular-nums"
+        style={{ color, minWidth: "24px" }}
+      >
         {stock}
       </span>
     </div>
@@ -203,7 +206,8 @@ export default function AdminInventoryPage() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedBranchId, setSelectedBranchId] = useState<number>(
-    Number.isFinite(branchFromQuery) && BRANCHES.some((branch) => branch.id === branchFromQuery)
+    Number.isFinite(branchFromQuery) &&
+      BRANCHES.some((branch) => branch.id === branchFromQuery)
       ? branchFromQuery
       : 1,
   );
@@ -310,7 +314,10 @@ export default function AdminInventoryPage() {
     );
   }, [items, searchQuery]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredItems.length / ITEMS_PER_PAGE),
+  );
   const safePage = Math.min(currentPage, totalPages);
 
   const pageItems = filteredItems.slice(
@@ -348,10 +355,15 @@ export default function AdminInventoryPage() {
   }, [items]);
 
   const criticalCount = items.filter((item) => item.stock < 5).length;
-  const lowCount = items.filter((item) => item.stock >= 5 && item.stock < 10).length;
+  const lowCount = items.filter(
+    (item) => item.stock >= 5 && item.stock < 10,
+  ).length;
   const totalUnits = items.reduce((sum, item) => sum + item.stock, 0);
 
-  const pageNumbers = Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1);
+  const pageNumbers = Array.from(
+    { length: Math.min(totalPages, 5) },
+    (_, i) => i + 1,
+  );
 
   return (
     <div
@@ -362,7 +374,7 @@ export default function AdminInventoryPage() {
       }}
     >
       <div
-        className="absolute inset-x-0 top-0 h-[320px] pointer-events-none"
+        className="absolute inset-x-0 top-0 h-80 pointer-events-none"
         style={{
           background:
             "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 100%)",
@@ -383,7 +395,7 @@ export default function AdminInventoryPage() {
         activeItem="Inventory"
       />
 
-      <div className="relative z-10 w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
+      <div className="relative z-10 w-full max-w-450 mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}
           currentTime={currentTime}
@@ -404,7 +416,10 @@ export default function AdminInventoryPage() {
             >
               Inventory Management
             </h2>
-            <p className="text-sm mt-1" style={{ color: "rgba(218,232,255,0.74)" }}>
+            <p
+              className="text-sm mt-1"
+              style={{ color: "rgba(218,232,255,0.74)" }}
+            >
               Branch: {selectedBranchLabel}
             </p>
           </div>
@@ -457,13 +472,18 @@ export default function AdminInventoryPage() {
         </div>
 
         <div className="rounded-[28px] p-5 sm:p-6" style={PANEL_CARD_STYLE}>
-
           <div className="mb-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl p-5" style={METRIC_CARD_STYLE}>
-              <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>
+              <p
+                className="text-base font-extrabold tracking-wide uppercase"
+                style={{ color: "#062d8c" }}
+              >
                 Total Items
               </p>
-              <p className="mt-2 leading-none" style={{ color: "#062d8c", fontSize: "3rem", fontWeight: 800 }}>
+              <p
+                className="mt-2 leading-none"
+                style={{ color: "#062d8c", fontSize: "3rem", fontWeight: 800 }}
+              >
                 {items.length}
               </p>
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
@@ -472,10 +492,16 @@ export default function AdminInventoryPage() {
             </div>
 
             <div className="rounded-xl p-5" style={METRIC_CARD_STYLE}>
-              <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>
+              <p
+                className="text-base font-extrabold tracking-wide uppercase"
+                style={{ color: "#062d8c" }}
+              >
                 Total Units
               </p>
-              <p className="mt-2 leading-none" style={{ color: "#062d8c", fontSize: "3rem", fontWeight: 800 }}>
+              <p
+                className="mt-2 leading-none"
+                style={{ color: "#062d8c", fontSize: "3rem", fontWeight: 800 }}
+              >
                 {totalUnits.toLocaleString()}
               </p>
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
@@ -484,10 +510,16 @@ export default function AdminInventoryPage() {
             </div>
 
             <div className="rounded-xl p-5" style={METRIC_CARD_STYLE}>
-              <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>
+              <p
+                className="text-base font-extrabold tracking-wide uppercase"
+                style={{ color: "#062d8c" }}
+              >
                 Low Stock
               </p>
-              <p className="mt-2 leading-none" style={{ color: "#c89400", fontSize: "3rem", fontWeight: 800 }}>
+              <p
+                className="mt-2 leading-none"
+                style={{ color: "#c89400", fontSize: "3rem", fontWeight: 800 }}
+              >
                 {lowCount}
               </p>
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
@@ -496,10 +528,16 @@ export default function AdminInventoryPage() {
             </div>
 
             <div className="rounded-xl p-5" style={METRIC_CARD_STYLE}>
-              <p className="text-base font-extrabold tracking-wide uppercase" style={{ color: "#062d8c" }}>
+              <p
+                className="text-base font-extrabold tracking-wide uppercase"
+                style={{ color: "#062d8c" }}
+              >
                 Critical
               </p>
-              <p className="mt-2 leading-none" style={{ color: "#e60404", fontSize: "3rem", fontWeight: 800 }}>
+              <p
+                className="mt-2 leading-none"
+                style={{ color: "#e60404", fontSize: "3rem", fontWeight: 800 }}
+              >
                 {criticalCount}
               </p>
               <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600">
@@ -518,11 +556,19 @@ export default function AdminInventoryPage() {
                   borderColor: `${CLASS_COLORS[summary.category]}55`,
                 }}
               >
-                <p className="text-lg font-extrabold text-[#001955]">{summary.label}</p>
-                <p className="text-xs font-semibold text-slate-500">
-                  PHP {summary.totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} value
+                <p className="text-lg font-extrabold text-[#001955]">
+                  {summary.label}
                 </p>
-                <p className="mt-1 text-3xl font-black text-[#001955]">{summary.count}</p>
+                <p className="text-xs font-semibold text-slate-500">
+                  PHP{" "}
+                  {summary.totalValue.toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })}{" "}
+                  value
+                </p>
+                <p className="mt-1 text-3xl font-black text-[#001955]">
+                  {summary.count}
+                </p>
               </div>
             ))}
           </div>
@@ -552,9 +598,14 @@ export default function AdminInventoryPage() {
           </div>
 
           <div className="overflow-x-auto rounded-xl" style={TABLE_CARD_STYLE}>
-            <table className="w-full min-w-[980px] border-collapse text-sm">
+            <table className="w-full min-w-245 border-collapse text-sm">
               <thead>
-                <tr style={{ background: "#e1e7f5", borderBottom: "1px solid #dbdee4" }}>
+                <tr
+                  style={{
+                    background: "#e1e7f5",
+                    borderBottom: "1px solid #dbdee4",
+                  }}
+                >
                   {[
                     "Item",
                     "SKU",
@@ -580,19 +631,28 @@ export default function AdminInventoryPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
+                    <td
+                      colSpan={9}
+                      className="px-3 py-10 text-center text-slate-500"
+                    >
                       Loading inventory...
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-red-600">
+                    <td
+                      colSpan={9}
+                      className="px-3 py-10 text-center text-red-600"
+                    >
                       {error}
                     </td>
                   </tr>
                 ) : pageItems.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
+                    <td
+                      colSpan={9}
+                      className="px-3 py-10 text-center text-slate-500"
+                    >
                       No inventory items found.
                     </td>
                   </tr>
@@ -602,18 +662,41 @@ export default function AdminInventoryPage() {
                     return (
                       <tr
                         key={item.id}
-                        style={{ background: index % 2 === 0 ? "#f5f4f4" : "#e6e6e6" }}
+                        style={{
+                          background: index % 2 === 0 ? "#f5f4f4" : "#e6e6e6",
+                        }}
                         className="transition-colors hover:brightness-95"
                       >
-                        <td className="px-3 py-2 text-[13px] text-[#001d63]">{item.name}</td>
-                        <td className="px-3 py-2 text-[13px] text-[#001d63]">{item.sku}</td>
-                        <td className="px-3 py-2 font-mono text-[13px] text-[#001d63]">{item.barcode}</td>
-                        <td className="px-3 py-2 text-[13px] text-[#001d63]">{item.location}</td>
-                        <td className="px-3 py-2"><ClassBadge label={item.classification} /></td>
-                        <td className="px-3 py-2"><StockBar stock={item.stock} maxStock={item.maxStock} /></td>
-                        <td className="px-3 py-2 text-right text-[13px] text-[#001d63]">{item.price.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-[13px] text-[#001d63]">{item.expiry}</td>
-                        <td className="px-3 py-2"><StatusBadge status={status} /></td>
+                        <td className="px-3 py-2 text-[13px] text-[#001d63]">
+                          {item.name}
+                        </td>
+                        <td className="px-3 py-2 text-[13px] text-[#001d63]">
+                          {item.sku}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[13px] text-[#001d63]">
+                          {item.barcode}
+                        </td>
+                        <td className="px-3 py-2 text-[13px] text-[#001d63]">
+                          {item.location}
+                        </td>
+                        <td className="px-3 py-2">
+                          <ClassBadge label={item.classification} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <StockBar
+                            stock={item.stock}
+                            maxStock={item.maxStock}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right text-[13px] text-[#001d63]">
+                          {item.price.toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-[13px] text-[#001d63]">
+                          {item.expiry}
+                        </td>
+                        <td className="px-3 py-2">
+                          <StatusBadge status={status} />
+                        </td>
                       </tr>
                     );
                   })
@@ -633,7 +716,11 @@ export default function AdminInventoryPage() {
                 onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                 disabled={safePage <= 1}
                 className="flex h-11 items-center gap-1 rounded-2xl px-4 text-sm font-bold disabled:opacity-40"
-                style={{ background: "#efefef", color: "#0b0b0b", border: "1px solid #dad8d8" }}
+                style={{
+                  background: "#efefef",
+                  color: "#0b0b0b",
+                  border: "1px solid #dad8d8",
+                }}
               >
                 <ChevronLeft size={14} /> Previous
               </button>
@@ -656,10 +743,16 @@ export default function AdminInventoryPage() {
 
               <button
                 type="button"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
                 disabled={safePage >= totalPages}
                 className="flex h-11 items-center gap-1 rounded-2xl px-4 text-sm font-bold disabled:opacity-40"
-                style={{ background: "#efefef", color: "#0b0b0b", border: "1px solid #dad8d8" }}
+                style={{
+                  background: "#efefef",
+                  color: "#0b0b0b",
+                  border: "1px solid #dad8d8",
+                }}
               >
                 Next <ChevronRight size={14} />
               </button>

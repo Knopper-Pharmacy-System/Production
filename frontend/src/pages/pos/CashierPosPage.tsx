@@ -6,8 +6,6 @@ import {
   LogOut,
   Receipt as ReceiptIcon,
   User,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 import logoOutline from "../../assets/logo_outline.png";
 import bannerLogo from "../../assets/banner_logo.png";
@@ -52,7 +50,7 @@ const CATEGORIES = [
   { value: "", label: "All" },
   { value: "MEDICINE", label: "Medicine" },
   { value: "GROCERY", label: "Grocery" },
-  { value: "MEDICAL SUPPLIES", label: "Medical Supplies" },
+  { value: "EQUIPMENT", label: "Medical Supplies" },
 ];
 
 const DISCOUNT_TYPES = [
@@ -65,6 +63,7 @@ const DISCOUNT_TYPES = [
 const DISCOUNT_RATES = [0, 0.20, 0.10, 0];
 const ITEMS_PER_PAGE = 50;
 const INITIAL_SEQUENCE_NUMBER = 1;
+const INVENTORY_SYNC_INTERVAL_MS = 3 * 60 * 1000;
 const RETURN_REASONS = [
   "Wrong Item",
   "Damaged Product",
@@ -85,6 +84,25 @@ const parseStoredSequence = (storageKey: string) => {
   return Number.isFinite(parsedValue) && parsedValue > 0
     ? parsedValue
     : INITIAL_SEQUENCE_NUMBER;
+};
+
+const getCurrentBranchIdFromToken = () => {
+  try {
+    const token = localStorage.getItem("access_token");
+    if (!token) return 1;
+
+    const payload = token.split(".")[1];
+    if (!payload) return 1;
+
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddingLength = (4 - (normalized.length % 4 || 4)) % 4;
+    const padded = normalized + "=".repeat(paddingLength);
+    const decoded = JSON.parse(atob(padded));
+    const branchId = Number(decoded?.branch);
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : 1;
+  } catch {
+    return 1;
+  }
 };
 
 type CartItem = {
@@ -111,6 +129,7 @@ type InventoryItem = {
   name: string;            // product_name_official
   productId?: number;
   barcode: string;
+  category?: string;
   expiry: string | null;   // expiry_date as string
   quantity: number;        // quantity_on_hand
   price: number;           // price_regular
@@ -127,7 +146,37 @@ const getInventoryBarcodeValue = (item: {
   primary_barcode?: string;
   Barcode?: string;
   BARCODE?: string;
-}) => item.barcode || item.barcode_value || item.barcodeValue || item.product_barcode || item.primary_barcode || item.Barcode || item.BARCODE || item.qr || item.qr_code || "—";
+}) => {
+  const candidates = [
+    item.barcode,
+    item.barcode_value,
+    item.barcodeValue,
+    item.product_barcode,
+    item.primary_barcode,
+    item.Barcode,
+    item.BARCODE,
+    item.qr,
+    item.qr_code,
+  ];
+
+  for (const candidate of candidates) {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    if (!value) continue;
+    const normalized = value.toUpperCase();
+    if (
+      /^[-‐‑–—―\s]+$/u.test(value) ||
+      normalized === "N/A" ||
+      normalized === "NA" ||
+      normalized === "NONE" ||
+      !/[0-9A-Z]/i.test(value)
+    ) {
+      continue;
+    }
+    return value;
+  }
+
+  return "";
+};
 
 const getInventoryDisplayName = (item: {
   name?: string;
@@ -136,6 +185,44 @@ const getInventoryDisplayName = (item: {
 }) => {
   const rawName = item.product_name_official || item.product_name || item.name || "Unnamed Product";
   return rawName.trim().toLowerCase() === "unnamed" ? "Unnamed Product" : rawName;
+};
+
+const normalizeInventoryCategory = (value?: string) => {
+  const normalized = (value || "").trim().toUpperCase();
+  if (!normalized) return "";
+
+  if (normalized === "MEDICINE") return "MEDICINE";
+  if (normalized === "GROCERY") return "GROCERY";
+
+  if (
+    normalized === "EQUIPMENT" ||
+    normalized.includes("EQUIP") ||
+    normalized.includes("MEDICAL") ||
+    normalized.includes("SUPPL") ||
+    normalized === "MEDICAL/MEDICINES SUPPLIES" ||
+    normalized === "MEDICAL_SUPPLIES" ||
+    normalized === "MEDICALSUPPLIES"
+  ) {
+    return "MEDICAL_SUPPLIES";
+  }
+
+  return normalized;
+};
+
+const matchesSelectedCategory = (itemCategory: string | undefined, selectedCategory: string) => {
+  if (!selectedCategory) return true;
+  const normalizedItem = normalizeInventoryCategory(itemCategory);
+  const normalizedSelected = normalizeInventoryCategory(selectedCategory);
+
+  if (normalizedItem === normalizedSelected) {
+    return true;
+  }
+
+  if (normalizedSelected === "MEDICAL_SUPPLIES") {
+    return normalizedItem !== "" && normalizedItem !== "MEDICINE" && normalizedItem !== "GROCERY";
+  }
+
+  return false;
 };
 
 type InventoryNavigationEvent = Pick<globalThis.KeyboardEvent, "key" | "ctrlKey" | "preventDefault">;
@@ -172,6 +259,7 @@ type VoidSelection = {
 
 function CashierPosPage() {
   const currentBranchName = getCurrentBranchName();
+  const [currentBranchId] = useState<number>(() => getCurrentBranchIdFromToken());
   const [currentDate, setCurrentDate] = useState("");
   const [currentTime, setCurrentTime] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -270,6 +358,7 @@ function CashierPosPage() {
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const lastAddToCartAtRef = useRef(0);
   const lastSelectItemAtRef = useRef<{ itemId: number; at: number } | null>(null);
+  const lastInventorySyncAtRef = useRef(0);
   const inventorySearchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemRef = useRef<HTMLDivElement | null>(null);
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
@@ -1044,15 +1133,27 @@ function CashierPosPage() {
         let allItems: any[] = [];
         let offset = 0;
         const limit = 500;
+        const maxPages = 25;
+        let pageCount = 0;
+        let previousPageSignature = "";
 
         while (true) {
-          const res = await fetch(`${API_BASE_URL}/inventory/branch/1?limit=${limit}&offset=${offset}`, {
+          if (pageCount >= maxPages) break;
+          const res = await fetch(`${API_BASE_URL}/inventory/branch/${currentBranchId}?limit=${limit}&offset=${offset}`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (!res.ok) break;
           const data = await res.json();
-          if (data.length === 0) break;
+          if (!Array.isArray(data) || data.length === 0) break;
+
+          const currentPageSignature = `${data.length}:${String(data[0]?.inventory_id ?? data[0]?.id ?? "none")}`;
+          if (currentPageSignature === previousPageSignature) {
+            break;
+          }
+          previousPageSignature = currentPageSignature;
+
           allItems.push(...data);
+          pageCount += 1;
           offset += limit;
           if (data.length < limit) break;
         }
@@ -1118,7 +1219,7 @@ function CashierPosPage() {
             return name.includes(searchTerm) || barcode.includes(searchTerm);
           }).toArray();
           if (selectedCategory) {
-            localItems = localItems.filter(item => item.category === selectedCategory);
+            localItems = localItems.filter(item => matchesSelectedCategory(item.category, selectedCategory));
           }
           allItems = localItems.map(item => ({
             id: item.id!,
@@ -1133,45 +1234,74 @@ function CashierPosPage() {
             category: item.category,
           }));
 
-          // Optionally refresh results from server in background (no loading spinner)
+          const initialSourceItems = allItems;
+          const initialPageStart = currentPage * ITEMS_PER_PAGE;
+          const initialPagedItems = initialSourceItems.slice(initialPageStart, initialPageStart + ITEMS_PER_PAGE);
+          setInventoryItems(initialPagedItems);
+          setTotalInventoryCount(initialSourceItems.length);
+          setSelectedInventoryIndex((previousIndex) => {
+            if (initialPagedItems.length === 0) return 0;
+            return Math.min(previousIndex, initialPagedItems.length - 1);
+          });
+          setIsLoading(false);
+
+          // Refresh from server and also update visible results immediately when available.
           if (navigator.onLine) {
-            setTimeout(async () => {
-              try {
-                const token = localStorage.getItem("access_token");
-                if (!token) return;
+            try {
+              const token = localStorage.getItem("access_token");
+              if (token) {
                 const res = await fetch(
-                  `${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}${selectedCategory ? `&category=${encodeURIComponent(selectedCategory)}` : ''}`,
+                  `${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}`,
                   { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
                 );
                 if (res.ok) {
                   const data = await res.json();
-                  // Upsert server results into local cache
-                  const serverItems = data.items ?? data ?? [];
+                  const serverItems = (data.items ?? data ?? []).map((i: any) => ({
+                    id: i.inventory_id,
+                    product_name_official: i.product_name_official,
+                    product_name: i.product_name,
+                    name: i.product_name_official || i.product_name,
+                    barcode: getInventoryBarcodeValue(i),
+                    qr_code: i.qr_code,
+                    qr: i.qr,
+                    barcode_value: getInventoryBarcodeValue(i),
+                    product_id: i.product_id,
+                    batch_number: i.batch_number,
+                    expiry_date: i.expiry_date,
+                    quantity_on_hand: Number(i.quantity_on_hand) || 0,
+                    price_regular: Number(i.price) || 0,
+                    price: Number(i.price) || 0,
+                    gondola_code: i.gondola_code || i.location,
+                    category: i.category || i.category_type || i.classification,
+                    sync_status: "synced",
+                    timestamp: Date.now(),
+                  }));
+
                   if (serverItems.length > 0) {
-                    await db.inventory.bulkPut(serverItems.map((i: any) => ({
-                      id: i.inventory_id,
-                      product_name_official: i.product_name_official,
-                      product_name: i.product_name,
-                      name: i.product_name_official || i.product_name,
-                      barcode: i.barcode || i.barcode_value || i.barcodeValue || i.product_barcode || i.primary_barcode || i.Barcode || i.BARCODE || i.qr || i.qr_code,
-                      qr_code: i.qr_code,
-                      qr: i.qr,
-                      barcode_value: i.barcode_value,
-                      product_id: i.product_id,
-                      batch_number: i.batch_number,
-                      expiry_date: i.expiry_date,
-                      quantity_on_hand: Number(i.quantity_on_hand) || 0,
-                      price_regular: Number(i.price) || 0,
-                      price: Number(i.price) || 0,
-                      gondola_code: i.gondola_code,
-                      category: i.category,
-                      sync_status: "synced",
-                      timestamp: Date.now(),
-                    })));
+                    await db.inventory.bulkPut(serverItems);
+                    let visibleServerItems = serverItems;
+                    if (selectedCategory) {
+                      visibleServerItems = visibleServerItems.filter((item: any) =>
+                        matchesSelectedCategory(item.category, selectedCategory)
+                      );
+                    }
+
+                    allItems = visibleServerItems.map((item: any) => ({
+                      id: item.id!,
+                      name: getInventoryDisplayName(item),
+                      description: item.product_name_official || "",
+                      productId: item.product_id || item.productId,
+                      barcode: getInventoryBarcodeValue(item),
+                      expiry: item.expiry_date || item.expiry || null,
+                      quantity: item.quantity_on_hand ?? item.quantity ?? 0,
+                      price: item.price_regular || item.price || 0,
+                      gondola: item.gondola_code || item.gondola || "—",
+                      category: item.category,
+                    }));
                   }
                 }
-              } catch { /* silent background refresh */ }
-            }, 0);
+              }
+            } catch { /* keep local results */ }
           }
         } else {
           // Full inventory mode - load from cache first, then sync
@@ -1179,7 +1309,7 @@ function CashierPosPage() {
             // Load from cache immediately
             let localItems = await db.inventory.toArray();
             if (selectedCategory) {
-              localItems = localItems.filter(item => item.category === selectedCategory);
+              localItems = localItems.filter(item => matchesSelectedCategory(item.category, selectedCategory));
             }
             allItems = localItems.map(item => ({
               id: item.id!,
@@ -1193,30 +1323,106 @@ function CashierPosPage() {
               gondola: item.gondola_code || item.gondola || "—",
             }));
 
-            // Then sync with server in background
-            setTimeout(async () => {
-              try {
-                const token = localStorage.getItem("access_token");
-                if (!token) return;
+            const initialSourceItems = applyStockFilter(allItems);
+            const initialPageStart = currentPage * ITEMS_PER_PAGE;
+            const initialPagedItems = initialSourceItems.slice(initialPageStart, initialPageStart + ITEMS_PER_PAGE);
+            setInventoryItems(initialPagedItems);
+            setTotalInventoryCount(initialSourceItems.length);
+            setSelectedInventoryIndex((previousIndex) => {
+              if (initialPagedItems.length === 0) return 0;
+              return Math.min(previousIndex, initialPagedItems.length - 1);
+            });
+            setIsLoading(false);
 
-                const res = await fetch(`${API_BASE_URL}/inventory/branch/1?limit=50&offset=0${selectedCategory ? `&category=${encodeURIComponent(selectedCategory)}` : ''}`, {
-                  headers: { Authorization: `Bearer ${token}` }
+            // Then sync with server and apply it immediately when available.
+            try {
+              const shouldSync = Date.now() - lastInventorySyncAtRef.current >= INVENTORY_SYNC_INTERVAL_MS;
+              if (!shouldSync) {
+                const sourceItems = applyStockFilter(allItems);
+                const pageStart = currentPage * ITEMS_PER_PAGE;
+                const pagedItems = sourceItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
+                setInventoryItems(pagedItems);
+                setTotalInventoryCount(sourceItems.length);
+                setSelectedInventoryIndex((previousIndex) => {
+                  if (pagedItems.length === 0) return 0;
+                  return Math.min(previousIndex, pagedItems.length - 1);
                 });
-                if (res.ok) {
-                  const data = await res.json();
-                  // Update cache
-                  await db.inventory.clear();
-                  await db.inventory.bulkAdd(data.map((i: any) => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
-                }
-              } catch (err) {
-                console.error("Background sync failed:", err);
+                return;
               }
-            }, 0);
+
+              const token = localStorage.getItem("access_token");
+              if (token) {
+                const limit = 500;
+                let offset = 0;
+                const maxPages = 25;
+                let pageCount = 0;
+                let previousPageSignature = "";
+                const serverItems: any[] = [];
+
+                while (true) {
+                  if (pageCount >= maxPages) break;
+                  const res = await fetch(`${API_BASE_URL}/inventory/branch/${currentBranchId}?limit=${limit}&offset=${offset}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                  if (!res.ok) break;
+                  const data = await res.json();
+                  if (!Array.isArray(data) || data.length === 0) break;
+
+                  const currentPageSignature = `${data.length}:${String(data[0]?.inventory_id ?? data[0]?.id ?? "none")}`;
+                  if (currentPageSignature === previousPageSignature) {
+                    break;
+                  }
+                  previousPageSignature = currentPageSignature;
+
+                  serverItems.push(...data);
+                  pageCount += 1;
+                  if (data.length < limit) break;
+                  offset += limit;
+                }
+
+                if (serverItems.length > 0) {
+                  const normalizedServerItems = serverItems.map((i: any) => ({
+                    ...i,
+                    barcode: getInventoryBarcodeValue(i),
+                    barcode_value: getInventoryBarcodeValue(i),
+                    category: i.category || i.category_type || i.classification,
+                    sync_status: "synced",
+                    timestamp: Date.now(),
+                  }));
+
+                  await db.inventory.clear();
+                  await db.inventory.bulkAdd(normalizedServerItems);
+
+                  let filteredServerItems = normalizedServerItems;
+                  if (selectedCategory) {
+                    filteredServerItems = filteredServerItems.filter((item: any) =>
+                      matchesSelectedCategory(item.category, selectedCategory)
+                    );
+                  }
+
+                  allItems = filteredServerItems.map((item: any) => ({
+                    id: item.id!,
+                    name: getInventoryDisplayName(item),
+                    description: item.product_name_official || "",
+                    productId: item.product_id || item.productId,
+                    barcode: getInventoryBarcodeValue(item),
+                    expiry: item.expiry_date || item.expiry || null,
+                    quantity: item.quantity_on_hand || item.quantity || 0,
+                    price: item.price_regular || item.price || 0,
+                    gondola: item.gondola_code || item.gondola || "—",
+                    category: item.category,
+                  }));
+                  lastInventorySyncAtRef.current = Date.now();
+                }
+              }
+            } catch (err) {
+              console.error("Background sync failed:", err);
+            }
           } else {
             // Offline: load from local DB
             let localItems = await db.inventory.toArray();
             if (selectedCategory) {
-              localItems = localItems.filter(item => item.category === selectedCategory);
+              localItems = localItems.filter(item => matchesSelectedCategory(item.category, selectedCategory));
             }
             allItems = localItems.map(item => ({
               id: item.id!,
@@ -1253,14 +1459,12 @@ function CashierPosPage() {
 
     const debounceTimer = setTimeout(() => loadInventory(), 0);
     return () => clearTimeout(debounceTimer);
-  }, [showInventoryModal, inventorySearch, selectedCategory, currentPage, stockFilter]);
+  }, [showInventoryModal, inventorySearch, selectedCategory, currentPage, stockFilter, currentBranchId]);
 
   // Reset states when modal opens
   useEffect(() => {
     if (showInventoryModal) {
-      setInventoryItems([]);
       setCurrentPage(0);
-      setTotalInventoryCount(0);
       setInventorySearch("");
       setSelectedCategory("MEDICINE");
       setStockFilter("in-stock");
@@ -1284,10 +1488,10 @@ function CashierPosPage() {
     const handler = (e: KeyboardEvent | Event) => {
       if (e instanceof KeyboardEvent) {
         if (isTerminalLocked) return;
+        const target = e.target as HTMLElement | null;
+        const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
 
         if (e.key === "Tab") {
-          const target = e.target as HTMLElement | null;
-          const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
           if (!isTypingTarget) {
             e.preventDefault();
             setIsKeybindHelpOpen((prev) => !prev);
@@ -1296,8 +1500,6 @@ function CashierPosPage() {
         }
 
         if (e.key.toLowerCase() === "l") {
-          const target = e.target as HTMLElement | null;
-          const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
           if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isCheckoutOpen && !isReceiptConfirmOpen && !isKeybindHelpOpen) {
             e.preventDefault();
             setTerminalLockError(null);
@@ -1367,9 +1569,7 @@ function CashierPosPage() {
         }
 
         if (e.key === " ") {
-          const spaceTarget = e.target as HTMLElement | null;
-          const isTypingSpace = Boolean(spaceTarget?.closest("input, textarea, [contenteditable='true']"));
-          if (!isTypingSpace && !showInventoryModal && !isManagerModalOpen && !isCheckoutOpen && !isKeybindHelpOpen) {
+          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isCheckoutOpen && !isKeybindHelpOpen) {
             e.preventDefault();
             setInventorySearch("");
             setSelectedCategory("MEDICINE");
@@ -1429,8 +1629,6 @@ function CashierPosPage() {
         }
 
         if (e.key === "Enter") {
-          const target = e.target as HTMLElement | null;
-          const isTypingTarget = Boolean(target?.closest("input, textarea, [contenteditable='true']"));
           if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen) {
             e.preventDefault();
             barcodeInputRef.current?.focus();
@@ -1441,6 +1639,10 @@ function CashierPosPage() {
         if (e.key === "F12") {
           e.preventDefault();
           handlePayment();
+          return;
+        }
+
+        if (isTypingTarget) {
           return;
         }
 
@@ -1623,9 +1825,10 @@ function CashierPosPage() {
     }
 
     selectedItems.forEach(item => {
+      const normalizedBarcode = item.barcode.trim();
       const newCartItem: CartItem = {
         id: Date.now() + Math.random(), // Ensure unique IDs
-        description: `${item.barcode !== "—" ? `[${item.barcode}] ` : ""}${item.name}`,
+        description: `${normalizedBarcode ? `[${normalizedBarcode}] ` : ""}${item.name}`,
         quantity: item.quantity,
         price: item.price,
         total: item.total,
@@ -1646,9 +1849,10 @@ function CashierPosPage() {
   };
 
   const handleDirectAddToCart = useCallback((item: { id: number; name: string; barcode: string; price: number; stock: number }) => {
+    const normalizedBarcode = item.barcode.trim();
     const newCartItem: CartItem = {
       id: Date.now() + Math.random(),
-      description: `${item.barcode !== "—" ? `[${item.barcode}] ` : ""}${item.name}`,
+      description: `${normalizedBarcode ? `[${normalizedBarcode}] ` : ""}${item.name}`,
       quantity: 1,
       price: item.price,
       total: item.price,
@@ -1970,16 +2174,19 @@ function CashierPosPage() {
           <header className="flex shrink-0 items-center justify-between rounded-2xl bg-gradient-to-r from-[#041848] to-[#062d8c] p-5 shadow-lg">
             <img src={bannerLogo} alt="Logo" className="h-10 w-auto" />
             <div className="flex items-center gap-6">
-              <div className="text-right text-white">
-                <p className="text-[10px] uppercase tracking-widest text-blue-300">Terminal ID</p>
-                <p className="font-bold">{terminalId}</p>
-              </div>
-              <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-white ${isOnline ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
-                {isOnline ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-                <span className="text-xs font-bold uppercase">{isOnline ? "Online" : "Offline"}</span>
-              </div>
               <div className="rounded-lg bg-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-blue-100">
                 Receipt {receiptEnabled ? "ON" : "OFF"}
+              </div>
+              <div
+                className={`relative flex h-9 items-center justify-center gap-2 rounded-xl px-4 ${
+                  isOnline ? "bg-[#0c8628]" : "bg-[#cc5500]"
+                }`}
+              >
+                <div className="pointer-events-none absolute inset-0 rounded-xl border border-[#062d8c] shadow-[0_0_40px_rgba(3,31,99,0.1)]" />
+                <div className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-[#acf9be]" : "bg-white"}`} />
+                <span className={`text-xs font-bold uppercase tracking-wide ${isOnline ? "text-[#acf9be]" : "text-white"}`}>
+                  {isOnline ? "ONLINE" : "OFFLINE"}
+                </span>
               </div>
               {isGeneratingReading && (
                 <div className="rounded-lg bg-amber-400/20 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-amber-200">
@@ -1993,10 +2200,10 @@ function CashierPosPage() {
           </header>
 
           {/* Amount Due */}
-          <div className="shrink-0 rounded-2xl bg-[#062d8c] p-8 shadow-xl">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-300">Amount Due</p>
+          <div className="shrink-0 rounded-2xl bg-gradient-to-r from-emerald-700 via-emerald-800 to-teal-800 p-8 shadow-xl">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-100">Amount Due</p>
             <p className="text-7xl font-black text-white">
-              <span className="mr-2 text-3xl font-light text-blue-400">PHP</span>
+              <span className="mr-2 text-3xl font-light text-emerald-200">PHP</span>
               {amountDue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </p>
           </div>

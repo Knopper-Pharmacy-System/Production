@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
+import AdminFooter from "../../components/admin/AdminFooter";
 import CreateUserModal from "../../components/admin/CreateUserModal";
 import { getToken } from "../../hooks/useAuth";
 
@@ -261,23 +262,28 @@ export default function UsersPage() {
         return;
       }
 
-      const res = await fetch(`${API_BASE_URL}/users/${id}`, {
-        method: "DELETE",
+      // Backend has no DELETE endpoint — deactivate the user instead
+      const res = await fetch(`${API_BASE_URL}/update-users/${id}`, {
+        method: "PUT",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ is_active: false }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        setUsersError(data.message || data.error || "Failed to delete user.");
+        setUsersError(data.message || data.error || "Failed to deactivate user.");
         return;
       }
 
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, status: "Inactive" as Status } : u)),
+      );
       setLastSync(new Date());
     } catch {
-      setUsersError("Network error while deleting user.");
+      setUsersError("Network error while deactivating user.");
     } finally {
       setOpenMenuId(null);
     }
@@ -831,7 +837,7 @@ export default function UsersPage() {
                                 }}
                               >
                                 <Trash2 size={14} />
-                                Delete User
+                                Deactivate User
                               </button>
                             </div>
                           )}
@@ -852,13 +858,7 @@ export default function UsersPage() {
           </div>
         </div>
 
-        {/* Footer */}
-        <div
-          className="text-center pb-4"
-          style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}
-        >
-          Knopper POS Admin Dashboard · {new Date().getFullYear()}
-        </div>
+        <AdminFooter lastSync={lastSync} />
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   LogOut,
   ClipboardList,
+  Receipt,
 } from "lucide-react";
 import logoSolid from "../../assets/logo_solid.png";
 import { logout } from "../../hooks/useAuth";
@@ -247,6 +248,11 @@ export default function AdminSidebar({
   const NAV_ROUTES: Record<string, string> = {
     Dashboard: "/admin",
     Overview: "/admin",
+    "Sales Reports": "/admin/sales-reports",
+    Branches: "/admin/branches",
+    Products: "/admin/products",
+    Transactions: "/admin/transactions",
+    Alerts: "/admin/alerts",
     Users: "/admin/users",
     Inventory: "/admin/inventory",
     "Audit Sheet": "/admin/audit-sheet",
@@ -353,7 +359,7 @@ export default function AdminSidebar({
 
             {dashboardExpanded && (
               <div className="flex flex-col">
-                {["Overview", "Inventory", "Products", "Tasks"].map((sub) => (
+                { ["Overview", "Products", "Alerts"].map((sub) => (
                   <button
                     key={sub}
                     onClick={() => handleNav(sub)}
@@ -407,6 +413,19 @@ export default function AdminSidebar({
             active={activeItem === "Sales Reports"}
             chevron="right"
             onClick={() => handleNav("Sales Reports")}
+          />
+
+          <SidebarItem
+            label="Transactions"
+            icon={
+              <Receipt
+                size={14}
+                color={activeItem === "Transactions" ? "#CB3CFF" : "#D6D6D6"}
+              />
+            }
+            active={activeItem === "Transactions"}
+            chevron="right"
+            onClick={() => handleNav("Transactions")}
           />
 
           {/* Branches */}

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
+import AdminFooter from "../../components/admin/AdminFooter";
 import { getToken } from "../../hooks/useAuth";
 
 // --- Types -------------------------------------------------------------------
@@ -1353,13 +1354,7 @@ export default function AdminAuditSheet() {
           </div>
         </div>
 
-        {/* Footer label */}
-        <div
-          className="text-center pb-4"
-          style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}
-        >
-          Knopper POS Admin Dashboard · {new Date().getFullYear()}
-        </div>
+        <AdminFooter lastSync={lastSync} />
       </div>
     </div>
   );

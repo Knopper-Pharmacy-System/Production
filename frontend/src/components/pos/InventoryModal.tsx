@@ -321,7 +321,7 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
                   }}
                   className={`grid grid-cols-[180px_1fr_100px_120px_100px_100px] items-center px-2 py-3 border-b border-slate-200 cursor-pointer transition-colors ${rowToneClass} ${rowStockClass}`}
                 >
-                  <div className="px-2 font-mono text-slate-700 truncate">{item.barcode}</div>
+                  <div className="px-2 font-mono text-slate-700 truncate">{item.barcode || "No Barcode"}</div>
                   <div className="px-4 font-medium">
                     <div className="text-slate-800">{item.name}</div>
                     {item.description && <div className="text-sm text-slate-600 mt-1">{item.description}</div>}
@@ -421,7 +421,7 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-slate-800 truncate">{item.name}</div>
                       <div className="text-xs text-slate-500 mt-1">
-                        Barcode: {item.barcode} • Stock: {item.stock}
+                        Barcode: {item.barcode || "No Barcode"} • Stock: {item.stock}
                       </div>
                     </div>
                     <button

@@ -45,8 +45,52 @@ def get_all_products():
 def get_branch_inventory(branch_id):
     cur = mysql.connection.cursor()
     try:
+        category_filter = request.args.get('category', '').strip().upper()
+
         sql = """
             SELECT 
+                bi.inventory_id,
+                p.product_id,
+                p.product_name_official,
+                p.category_type,
+                COALESCE(
+                    MAX(
+                        CASE
+                            WHEN pb.is_primary = TRUE
+                                 AND pb.barcode_value IS NOT NULL
+                                 AND TRIM(pb.barcode_value) NOT IN ('', '-', '—', 'N/A', 'NA', 'NONE')
+                                 AND TRIM(pb.barcode_value) REGEXP '[0-9A-Za-z]'
+                            THEN TRIM(pb.barcode_value)
+                        END
+                    ),
+                    MIN(
+                        CASE
+                            WHEN pb.barcode_value IS NOT NULL
+                                 AND TRIM(pb.barcode_value) NOT IN ('', '-', '—', 'N/A', 'NA', 'NONE')
+                                 AND TRIM(pb.barcode_value) REGEXP '[0-9A-Za-z]'
+                            THEN TRIM(pb.barcode_value)
+                        END
+                    )
+                ) AS barcode_value,
+                bi.batch_number,
+                bi.expiry_date,
+                bi.quantity_on_hand,
+                p.price_regular,
+                g.gondola_code
+            FROM BRANCH_INVENTORY bi
+            JOIN PRODUCTS p ON bi.product_id = p.product_id
+            LEFT JOIN PRODUCT_BARCODES pb ON p.product_id = pb.product_id
+            LEFT JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
+            WHERE bi.branch_id = %s
+        """
+
+        params = [branch_id]
+        if category_filter:
+            sql += " AND p.category_type = %s"
+            params.append(category_filter)
+
+        sql += """
+            GROUP BY
                 bi.inventory_id,
                 p.product_id,
                 p.product_name_official,
@@ -54,13 +98,11 @@ def get_branch_inventory(branch_id):
                 bi.batch_number,
                 bi.expiry_date,
                 bi.quantity_on_hand,
-                p.price_regular
-            FROM BRANCH_INVENTORY bi
-            JOIN PRODUCTS p ON bi.product_id = p.product_id
-            WHERE bi.branch_id = %s
+                p.price_regular,
+                g.gondola_code
             ORDER BY p.product_name_official ASC, bi.expiry_date ASC
         """
-        cur.execute(sql, (branch_id,))
+        cur.execute(sql, tuple(params))
         inventory_items = cur.fetchall()
 
         inventory_list = []
@@ -69,12 +111,16 @@ def get_branch_inventory(branch_id):
                 "inventory_id": item[0],
                 "product_id": item[1],
                 "product_name": item[2],
+                "product_name_official": item[2],
                 "category": item[3],
-                "batch_number": item[4],
+                "barcode": item[4],
+                "barcode_value": item[4],
+                "batch_number": item[5],
                 # Dates need to be converted to strings for JSON formatting
-                "expiry_date": item[5].strftime('%Y-%m-%d') if item[5] else None,
-                "quantity_on_hand": item[6],
-                "price": float(item[7]) if item[7] else 0.00
+                "expiry_date": item[6].strftime('%Y-%m-%d') if item[6] else None,
+                "quantity_on_hand": item[7],
+                "price": float(item[8]) if item[8] else 0.00,
+                "gondola_code": item[9],
             })
 
         return jsonify(inventory_list), 200
@@ -264,6 +310,7 @@ def search_product():
     
     # Get the search term from the URL parameter (e.g., /search?name=paracetamol)
     search_query = request.args.get('name', '')
+    category_filter = request.args.get('category', '').strip().upper()
 
     if not search_query:
         return jsonify({"message": "Please provide a product name to search for."}), 400
@@ -273,21 +320,63 @@ def search_product():
     
         sql = """
             SELECT 
+                bi.inventory_id,
                 p.product_id,
-                p.product_name_official, 
+                p.product_name_official,
+                p.category_type,
+                COALESCE(
+                    MAX(
+                        CASE
+                            WHEN pb.is_primary = TRUE
+                                 AND pb.barcode_value IS NOT NULL
+                                 AND TRIM(pb.barcode_value) NOT IN ('', '-', '—', 'N/A', 'NA', 'NONE')
+                                 AND TRIM(pb.barcode_value) REGEXP '[0-9A-Za-z]'
+                            THEN TRIM(pb.barcode_value)
+                        END
+                    ),
+                    MIN(
+                        CASE
+                            WHEN pb.barcode_value IS NOT NULL
+                                 AND TRIM(pb.barcode_value) NOT IN ('', '-', '—', 'N/A', 'NA', 'NONE')
+                                 AND TRIM(pb.barcode_value) REGEXP '[0-9A-Za-z]'
+                            THEN TRIM(pb.barcode_value)
+                        END
+                    )
+                ) AS barcode_value,
                 bi.batch_number, 
                 bi.expiry_date, 
                 bi.quantity_on_hand, 
+                p.price_regular,
                 g.gondola_code
             FROM BRANCH_INVENTORY bi
             JOIN PRODUCTS p ON bi.product_id = p.product_id
+            LEFT JOIN PRODUCT_BARCODES pb ON p.product_id = pb.product_id
             JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
             WHERE bi.branch_id = %s 
               AND p.product_name_official LIKE %s
+        """
+
+        like_pattern = f"%{search_query}%"
+        params = [current_branch_id, like_pattern]
+        if category_filter:
+            sql += " AND p.category_type = %s"
+            params.append(category_filter)
+
+        sql += """
+            GROUP BY
+                bi.inventory_id,
+                p.product_id,
+                p.product_name_official,
+                p.category_type,
+                bi.batch_number,
+                bi.expiry_date,
+                bi.quantity_on_hand,
+                p.price_regular,
+                g.gondola_code
             ORDER BY p.product_name_official ASC, bi.expiry_date ASC
         """
-        like_pattern = f"%{search_query}%"
-        cur.execute(sql, (current_branch_id, like_pattern))
+
+        cur.execute(sql, tuple(params))
         results = cur.fetchall()
 
         if not results:
@@ -297,12 +386,20 @@ def search_product():
         search_results = []
         for row in results:
             search_results.append({
-                "product_id": row[0],
-                "product_name": row[1],
-                "batch_number": row[2],
-                "expiry_date": row[3].strftime('%Y-%m-%d') if row[3] else None,
-                "quantity": row[4],
-                "location": row[5]
+                "inventory_id": row[0],
+                "product_id": row[1],
+                "product_name": row[2],
+                "product_name_official": row[2],
+                "category": row[3],
+                "barcode": row[4],
+                "barcode_value": row[4],
+                "batch_number": row[5],
+                "expiry_date": row[6].strftime('%Y-%m-%d') if row[6] else None,
+                "quantity": row[7],
+                "quantity_on_hand": row[7],
+                "price": float(row[8]) if row[8] else 0.00,
+                "location": row[9],
+                "gondola_code": row[9],
             })
 
         return jsonify({

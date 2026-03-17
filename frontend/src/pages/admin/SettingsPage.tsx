@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Coins,
@@ -11,14 +11,23 @@ import {
 } from "lucide-react";
 import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
+import AdminFooter from "../../components/admin/AdminFooter";
 import {
   getActiveShift,
   getCurrentBranchName,
   updateActiveShiftOpeningBalance,
   type ShiftSession,
 } from "../../features/pos/api/db";
+import { getToken } from "../../hooks/useAuth";
 
 type SettingsTab = "general" | "inventory" | "audit" | "cash" | "security";
+type ResetSection = "sales" | "stock_batches" | "procurement" | "transfers";
+
+interface BranchOption {
+  branch_id: number;
+  branch_name: string;
+  branch_code: string;
+}
 
 interface GeneralSettings {
   branchLabel: string;
@@ -57,6 +66,44 @@ const BRANCH_OPTIONS = [
   "DIVERSION BRANCH",
   "PANGANIBAN BRANCH",
 ] as const;
+
+const DEFAULT_RESET_BRANCHES: BranchOption[] = [
+  { branch_id: 1, branch_name: "BMC MAIN", branch_code: "MAIN" },
+  { branch_id: 2, branch_name: "DIVERSION BRANCH", branch_code: "DIV" },
+  { branch_id: 3, branch_name: "PANGANIBAN BRANCH", branch_code: "PAN" },
+];
+
+const RESET_SECTION_OPTIONS: Array<{
+  value: ResetSection;
+  label: string;
+  hint: string;
+  warning?: string;
+}> = [
+  {
+    value: "sales",
+    label: "Sales & Shift History",
+    hint: "Receipts, cashier shifts, sales returns, suspended transactions, and branch sales reports. Does NOT delete product names/prices.",
+  },
+  {
+    value: "stock_batches",
+    label: "Branch Stock Batches",
+    hint: "Clears per-branch inventory quantities and batches (like clearing a shelf count). Product names, barcodes, and prices are NEVER touched.",
+    warning: "Requires Sales & Shift History to be selected.",
+  },
+  {
+    value: "procurement",
+    label: "Procurement Records",
+    hint: "Purchase orders, delivery receipts, and receiving reports. Supplier list is preserved.",
+  },
+  {
+    value: "transfers",
+    label: "Transfer History",
+    hint: "Transfer manifests and transfer item records between branches.",
+  },
+];
+
+const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 const TAB_CONFIG: Array<{
   id: SettingsTab;
@@ -136,6 +183,24 @@ function ToggleRow({
   );
 }
 
+async function parseApiPayload(response: Response): Promise<Record<string, unknown>> {
+  try {
+    const contentType = response.headers.get("content-type") || "";
+    const text = await response.text();
+    if (!text) return {};
+    if (contentType.toLowerCase().includes("application/json")) {
+      return JSON.parse(text) as Record<string, unknown>;
+    }
+    // Non-JSON (HTML error pages from proxy/nginx)
+    if (text.startsWith("<")) {
+      return { message: `Server returned an unexpected response (HTTP ${response.status}). Check that the backend is running and reachable.` };
+    }
+    return { message: text };
+  } catch {
+    return { message: `Could not read server response (HTTP ${response.status}).` };
+  }
+}
+
 export default function SettingsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -145,6 +210,17 @@ export default function SettingsPage() {
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isUpdatingCash, setIsUpdatingCash] = useState(false);
+  const [isResettingTestData, setIsResettingTestData] = useState(false);
+  const [isCreatingTestingBranch, setIsCreatingTestingBranch] = useState(false);
+  const [availableBranches, setAvailableBranches] = useState<BranchOption[]>(DEFAULT_RESET_BRANCHES);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [selectedResetBranchId, setSelectedResetBranchId] = useState<string>("all");
+  const [selectedResetSections, setSelectedResetSections] = useState<ResetSection[]>([
+    "sales",
+    "stock_batches",
+    "procurement",
+    "transfers",
+  ]);
   const [activeShift, setActiveShift] = useState<ShiftSession | null>(null);
   const [cashOverrideAmount, setCashOverrideAmount] = useState("0");
   const [selectedCashBranch, setSelectedCashBranch] = useState(getCurrentBranchName());
@@ -206,10 +282,59 @@ export default function SettingsPage() {
     void loadActiveShift();
   }, [cashSettings.defaultFloat, selectedCashBranch]);
 
+  const loadBranches = useCallback(async () => {
+    setIsLoadingBranches(true);
+    try {
+      const token = getToken();
+      if (!token) {
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/branches`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = (await parseApiPayload(response)) as BranchOption[] | { message?: string };
+      if (!response.ok || !Array.isArray(payload) || payload.length === 0) {
+        return;
+      }
+
+      setAvailableBranches(
+        payload
+          .map((branch) => ({
+            branch_id: Number(branch.branch_id),
+            branch_name: branch.branch_name,
+            branch_code: branch.branch_code,
+          }))
+          .sort((first, second) => first.branch_id - second.branch_id),
+      );
+    } catch {
+      // Keep fallback branches when remote list isn't available.
+    } finally {
+      setIsLoadingBranches(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBranches();
+  }, [loadBranches]);
+
   const activeConfig = useMemo(
     () => TAB_CONFIG.find((tab) => tab.id === activeTab) ?? TAB_CONFIG[0],
     [activeTab],
   );
+
+  const selectedResetBranchLabel = useMemo(() => {
+    if (selectedResetBranchId === "all") return "All Branches";
+    const match = availableBranches.find(
+      (branch) => String(branch.branch_id) === selectedResetBranchId,
+    );
+    return match
+      ? `${match.branch_name} (${match.branch_code})`
+      : `Branch ${selectedResetBranchId}`;
+  }, [availableBranches, selectedResetBranchId]);
 
   const handleSave = () => {
     setSettingsError(null);
@@ -221,6 +346,15 @@ export default function SettingsPage() {
     const shift = await getActiveShift(selectedCashBranch);
     setActiveShift(shift);
     return shift;
+  };
+
+  const toggleResetSection = (section: ResetSection) => {
+    setSelectedResetSections((previous) => {
+      if (previous.includes(section)) {
+        return previous.filter((item) => item !== section);
+      }
+      return [...previous, section];
+    });
   };
 
   const handleApplyCashAmount = async (amount: number) => {
@@ -253,6 +387,154 @@ export default function SettingsPage() {
 
   const handleResetCash = async () => {
     await handleApplyCashAmount(0);
+  };
+
+  const handleCreateTestingBranch = async () => {
+    const proceed = window.confirm(
+      "Create a TESTING BRANCH now? If it already exists, the system will reuse it.",
+    );
+    if (!proceed) return;
+
+    setIsCreatingTestingBranch(true);
+    setSettingsError(null);
+    setSettingsMessage(null);
+
+    try {
+      const token = getToken();
+      if (!token) {
+        setSettingsError("No auth token found. Please log in again.");
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/admin/testing/create-branch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          branch_name: "TESTING BRANCH",
+          branch_code: "TEST",
+        }),
+      });
+
+      const payload = await parseApiPayload(response);
+      if (!response.ok) {
+        setSettingsError(
+          (payload as { message?: string; error?: string }).message ||
+            (payload as { message?: string; error?: string }).error ||
+            "Failed to create testing branch.",
+        );
+        return;
+      }
+
+      const branch = (payload as { branch: BranchOption; created?: boolean }).branch;
+      setSettingsMessage(
+        (payload as { created?: boolean }).created
+          ? `Testing branch created: ${branch.branch_name} (${branch.branch_code})`
+          : `Testing branch already exists: ${branch.branch_name} (${branch.branch_code})`,
+      );
+      setLastSync(new Date());
+      void loadBranches();
+    } catch {
+      setSettingsError("Network error while creating testing branch.");
+    } finally {
+      setIsCreatingTestingBranch(false);
+    }
+  };
+
+  const handleResetSystemDataForTesting = async () => {
+    if (selectedResetSections.length === 0) {
+      setSettingsError("Select at least one reset section first.");
+      return;
+    }
+
+    if (
+      selectedResetSections.includes("stock_batches") &&
+      !selectedResetSections.includes("sales")
+    ) {
+      setSettingsError("Branch Stock Batches reset requires Sales & Shift History to be selected too.");
+      return;
+    }
+
+    const selectedSectionLabels = RESET_SECTION_OPTIONS.filter((option) =>
+      selectedResetSections.includes(option.value),
+    ).map((option) => option.label);
+
+    const confirmation = window.prompt(
+      `This will reset ${selectedSectionLabels.join(", ")} for ${selectedResetBranchLabel} while keeping USERS, BRANCHES, PRODUCTS, and PRODUCT BARCODES.\n\nType exactly: RESET TEST DATA`,
+      "",
+    );
+
+    if (confirmation !== "RESET TEST DATA") {
+      if (confirmation !== null) {
+        setSettingsError("Reset cancelled: confirmation text did not match.");
+      }
+      return;
+    }
+
+    setIsResettingTestData(true);
+    setSettingsError(null);
+    setSettingsMessage(null);
+
+    try {
+      const token = getToken();
+      if (!token) {
+        setSettingsError("No auth token found. Please log in again.");
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 30_000);
+
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}/admin/testing/reset-system-data`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            confirm_text: "RESET TEST DATA",
+            branch_id: selectedResetBranchId === "all" ? "all" : Number(selectedResetBranchId),
+            reset_sections: selectedResetSections,
+          }),
+          signal: controller.signal,
+        });
+      } catch (fetchErr: unknown) {
+        const isTimeout = fetchErr instanceof Error && fetchErr.name === "AbortError";
+        setSettingsError(
+          isTimeout
+            ? "Request timed out after 30 seconds. The backend may be starting up — wait a moment and try again."
+            : `Could not reach the server: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`,
+        );
+        return;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+
+      const payload = await parseApiPayload(response);
+      if (!response.ok) {
+        setSettingsError(
+          String(payload.message || payload.error || `Server error (HTTP ${response.status}).`)
+        );
+        return;
+      }
+
+      const deletedTables = Object.keys((payload.deleted_rows as Record<string, number> | undefined) || {}).length;
+      setSettingsMessage(
+        deletedTables > 0
+          ? `${String(payload.message || "Test data reset completed.")} (${deletedTables} table(s) cleared)`
+          : String(payload.message || "Test data reset completed."),
+      );
+      setLastSync(new Date());
+      void refreshActiveShift();
+    } catch (unexpectedErr: unknown) {
+      setSettingsError(`Unexpected error: ${unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr)}`);
+    } finally {
+      setIsResettingTestData(false);
+    }
   };
 
   return (
@@ -771,17 +1053,134 @@ export default function SettingsPage() {
                     }))
                   }
                 />
+
+                <div
+                  className="rounded-xl px-4 py-4 flex flex-col gap-3"
+                  style={{
+                    background: "rgba(255,255,255,0.72)",
+                    border: "1px solid rgba(118,140,203,0.2)",
+                  }}
+                >
+                  <p className="text-sm font-bold" style={{ color: "#062d8c" }}>
+                    Testing Utilities (Admin Only)
+                  </p>
+                  <p className="text-xs" style={{ color: "#6a728a" }}>
+                    Use these only for QA/testing environments. You can now target one branch or all branches, then choose which operational data buckets to clear.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,240px)_1fr]">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold" style={{ color: "#6a728a" }}>
+                        Reset Scope
+                      </label>
+                      <select
+                        value={selectedResetBranchId}
+                        onChange={(event) => setSelectedResetBranchId(event.target.value)}
+                        disabled={isResettingTestData || isCreatingTestingBranch || isLoadingBranches}
+                        className="h-11 rounded-xl px-4 text-sm outline-none"
+                        style={{ border: "1px solid #c9cfdb", color: "#001d63", background: "#fff" }}
+                      >
+                        <option value="all">All Branches</option>
+                        {availableBranches.map((branch) => (
+                          <option key={branch.branch_id} value={String(branch.branch_id)}>
+                            {branch.branch_name} ({branch.branch_code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {RESET_SECTION_OPTIONS.map((option) => {
+                        const checked = selectedResetSections.includes(option.value);
+                        const isSalesLockedByBatches =
+                          option.value === "sales" &&
+                          selectedResetSections.includes("stock_batches");
+                        const disabled =
+                          isResettingTestData ||
+                          isCreatingTestingBranch ||
+                          isSalesLockedByBatches;
+
+                        return (
+                          <label
+                            key={option.value}
+                            className="flex gap-3 rounded-xl border px-3 py-3"
+                            style={{
+                              borderColor: checked ? "rgba(17,51,242,0.24)" : "rgba(148,163,184,0.22)",
+                              background: checked ? "rgba(17,51,242,0.06)" : "rgba(255,255,255,0.85)",
+                              opacity: disabled ? 0.72 : 1,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={disabled}
+                              onChange={() => toggleResetSection(option.value)}
+                              className="mt-1"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-bold" style={{ color: "#062d8c" }}>
+                                {option.label}
+                              </span>
+                              <span className="mt-1 block text-xs" style={{ color: "#6a728a" }}>
+                                {option.hint}
+                              </span>
+                              {option.warning && checked && (
+                                <span className="mt-1 block text-xs font-semibold" style={{ color: "#c87000" }}>
+                                  ⚠ {option.warning}
+                                </span>
+                              )}
+                              {isSalesLockedByBatches && (
+                                <span className="mt-1 block text-xs font-semibold" style={{ color: "#1133f2" }}>
+                                  Required by Branch Stock Batches
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div
+                    className="rounded-xl px-4 py-3 text-xs"
+                    style={{ background: "rgba(239,244,255,0.9)", border: "1px solid rgba(115,139,205,0.18)", color: "#5d6885" }}
+                  >
+                    Reset target: <span className="font-bold text-[#062d8c]">{selectedResetBranchLabel}</span>
+                    {selectedResetSections.length > 0 ? (
+                      <span>
+                        {" "}• Sections: <span className="font-bold text-[#062d8c]">{RESET_SECTION_OPTIONS.filter((option) => selectedResetSections.includes(option.value)).map((option) => option.label).join(", ")}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      disabled={isCreatingTestingBranch || isResettingTestData}
+                      onClick={() => {
+                        void handleCreateTestingBranch();
+                      }}
+                      className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isCreatingTestingBranch ? "Creating..." : "Add Testing Branch"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isCreatingTestingBranch || isResettingTestData}
+                      onClick={() => {
+                        void handleResetSystemDataForTesting();
+                      }}
+                      className="rounded-xl border border-red-300 bg-red-50 px-5 py-3 text-sm font-black uppercase tracking-wide text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isResettingTestData
+                        ? "Resetting..."
+                        : "Reset Test Data (Keep Users/Branches/Products)"}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        <div
-          className="text-center pb-4"
-          style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}
-        >
-          Knopper POS Admin Dashboard · {new Date().getFullYear()}
-        </div>
+        <AdminFooter lastSync={lastSync} />
       </div>
     </div>
   );

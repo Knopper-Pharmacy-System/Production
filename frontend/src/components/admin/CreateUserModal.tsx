@@ -165,7 +165,7 @@ export default function CreateUserModal({
       const isEditMode = mode === "edit" && initialUser;
       const endpoint = isEditMode
         ? `${API_BASE_URL}/update-users/${initialUser.id}`
-        : `${API_BASE_URL}/users`;
+        : `${API_BASE_URL}/create-user`;
 
       const payload = isEditMode
         ? {

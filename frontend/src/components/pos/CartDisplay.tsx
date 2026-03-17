@@ -56,7 +56,37 @@ const getInventoryBarcodeValue = (item: {
   primary_barcode?: string;
   Barcode?: string;
   BARCODE?: string;
-}) => item.barcode || item.barcode_value || item.barcodeValue || item.product_barcode || item.primary_barcode || item.Barcode || item.BARCODE || item.qr || item.qr_code || '—';
+}) => {
+  const candidates = [
+    item.barcode,
+    item.barcode_value,
+    item.barcodeValue,
+    item.product_barcode,
+    item.primary_barcode,
+    item.Barcode,
+    item.BARCODE,
+    item.qr,
+    item.qr_code,
+  ];
+
+  for (const candidate of candidates) {
+    const value = typeof candidate === 'string' ? candidate.trim() : '';
+    if (!value) continue;
+    const normalized = value.toUpperCase();
+    if (
+      /^[-‐‑–—―\s]+$/u.test(value) ||
+      normalized === 'N/A' ||
+      normalized === 'NA' ||
+      normalized === 'NONE' ||
+      !/[0-9A-Z]/i.test(value)
+    ) {
+      continue;
+    }
+    return value;
+  }
+
+  return '';
+};
 
 interface CartDisplayProps {
   cartItems: CartItem[];
@@ -270,7 +300,7 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
                   >
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-slate-800 text-sm truncate">{item.name}</p>
-                      <p className="text-xs text-slate-400">Barcode: {item.barcode} &bull; Stock: {item.stock}</p>
+                      <p className="text-xs text-slate-400">Barcode: {item.barcode || 'No Barcode'} &bull; Stock: {item.stock}</p>
                     </div>
                     <span className="ml-4 shrink-0 font-black text-[#062d8c] text-sm">₱{item.price.toFixed(2)}</span>
                   </div>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
+import AdminFooter from "../../components/admin/AdminFooter";
 import LowStocksModal from "../../components/admin/LowStocksModal";
 import NearExpiryModal from "../../components/admin/NearExpiryModal";
 import { getToken } from "../../hooks/useAuth";
@@ -1219,13 +1220,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Footer */}
-        <div
-          className="text-center pb-4"
-          style={{ color: "rgba(255,255,255,0.3)", fontSize: "12px" }}
-        >
-          Knopper POS Admin Dashboard · {new Date().getFullYear()}
-        </div>
+        <AdminFooter lastSync={lastSync} />
 
         {isKeybindHelpOpen && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">

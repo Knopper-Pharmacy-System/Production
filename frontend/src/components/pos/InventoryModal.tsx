@@ -38,6 +38,8 @@ interface InventoryModalProps {
   setSelectedCategory: (category: string) => void;
   stockFilter: StockFilter;
   setStockFilter: (filter: StockFilter) => void;
+  showBarcodeColumn: boolean;
+  setShowBarcodeColumn: (show: boolean) => void;
   isSearchMode: boolean;
   inventoryItems: InventoryItem[];
   isLoading: boolean;
@@ -65,6 +67,8 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
   setSelectedCategory,
   stockFilter,
   setStockFilter,
+  showBarcodeColumn,
+  setShowBarcodeColumn,
   isSearchMode,
   inventoryItems,
   isLoading,
@@ -83,8 +87,10 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
   addSelectedToCart,
   CATEGORIES,
 }) => {
-  const wheelLockRef = useRef(false);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const tableGridClass = showBarcodeColumn
+    ? "grid grid-cols-[180px_1fr_100px_120px_100px_100px]"
+    : "grid grid-cols-[1fr_100px_120px_100px_100px]";
 
   useEffect(() => {
     if (!showInventoryModal) return undefined;
@@ -121,38 +127,6 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
   }, [showInventoryModal, handleModalKeyDown, inventorySearchRef]);
 
   if (!showInventoryModal) return null;
-
-  const handleWheelNavigation = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (inventoryItems.length === 0) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (wheelLockRef.current) return;
-    wheelLockRef.current = true;
-    window.setTimeout(() => {
-      wheelLockRef.current = false;
-    }, 40);
-
-    const direction = event.deltaY > 0 ? 1 : -1;
-    if (direction > 0 && selectedInventoryIndex >= inventoryItems.length - 1) {
-      if (currentPage + 1 < totalPages) {
-        setCurrentPage((page) => page + 1);
-        setSelectedInventoryIndex(0);
-      }
-      return;
-    }
-
-    if (direction < 0 && selectedInventoryIndex <= 0) {
-      if (currentPage > 0) {
-        setCurrentPage((page) => page - 1);
-        setSelectedInventoryIndex(Number.MAX_SAFE_INTEGER);
-      }
-      return;
-    }
-
-    setSelectedInventoryIndex(Math.max(0, Math.min(selectedInventoryIndex + direction, inventoryItems.length - 1)));
-  };
 
   const hasPreviousPage = currentPage > 0;
   const hasNextPage = currentPage + 1 < totalPages;
@@ -251,6 +225,17 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
                 Search mode: all stock levels visible
               </span>
             )}
+
+            <button
+              onClick={() => setShowBarcodeColumn(!showBarcodeColumn)}
+              className={`ml-auto px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                showBarcodeColumn
+                  ? "bg-[#062d8c] text-white"
+                  : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+              }`}
+            >
+              Barcode: {showBarcodeColumn ? "ON" : "OFF"}
+            </button>
           </div>
 
           <input
@@ -265,8 +250,8 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
         </div>
 
         {/* Table Header */}
-        <div className="grid grid-cols-[180px_1fr_100px_120px_100px_100px] bg-[#e8eefc] border-b border-blue-200 font-bold text-xs uppercase text-[#12337f] px-2 py-3 shrink-0">
-          <div className="px-2">Barcode</div>
+        <div className={`${tableGridClass} bg-[#e8eefc] border-b border-blue-200 font-bold text-xs uppercase text-[#12337f] px-2 py-3 shrink-0`}>
+          {showBarcodeColumn && <div className="px-2">Barcode</div>}
           <div className="px-4">Product / Description</div>
           <div className="text-center">Stock</div>
           <div className="text-right pr-4">Price</div>
@@ -275,7 +260,7 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
         </div>
 
         {/* Items */}
-        <div className="overflow-y-auto flex-1 overscroll-contain bg-white" onWheel={handleWheelNavigation}>
+        <div className="overflow-y-auto flex-1 overscroll-contain bg-white scroll-smooth">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-64 text-slate-400">
               <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full mb-4"></div>
@@ -319,9 +304,11 @@ const InventoryModal: React.FC<InventoryModalProps> = ({
                       setSelectedInventoryIndex(idx);
                     }
                   }}
-                  className={`grid grid-cols-[180px_1fr_100px_120px_100px_100px] items-center px-2 py-3 border-b border-slate-200 cursor-pointer transition-colors ${rowToneClass} ${rowStockClass}`}
+                  className={`${tableGridClass} items-center px-2 py-3 border-b border-slate-200 cursor-pointer transition-colors ${rowToneClass} ${rowStockClass}`}
                 >
-                  <div className="px-2 font-mono text-slate-700 truncate">{item.barcode || "No Barcode"}</div>
+                  {showBarcodeColumn && (
+                    <div className="px-2 font-mono text-slate-700 truncate">{item.barcode || "No Barcode"}</div>
+                  )}
                   <div className="px-4 font-medium">
                     <div className="text-slate-800">{item.name}</div>
                     {item.description && <div className="text-sm text-slate-600 mt-1">{item.description}</div>}

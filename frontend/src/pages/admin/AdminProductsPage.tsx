@@ -13,6 +13,8 @@ type ApiInventoryItem = {
   product_name?: string;
   product_name_official?: string;
   category?: string;
+  category_type?: string;
+  classification?: string;
   barcode?: string | null;
   barcode_value?: string | null;
   quantity_on_hand: number;
@@ -23,12 +25,20 @@ type ProductRow = {
   id: number;
   productId: number;
   name: string;
+  shortName: string;
+  longName: string;
   category: string;
   barcode: string;
   price: number;
+  priceWholesale: number;
+  priceSenior: number;
+  priceType: "regular" | "wholesale" | "senior";
+  allowDiscount: boolean;
   stock: number;
   location: string;
 };
+
+type ProductEditorDraft = ProductRow;
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
@@ -37,6 +47,13 @@ const BRANCHES: BranchOption[] = [
   { id: 2, label: "DIVERSION BRANCH" },
   { id: 3, label: "PANGANIBAN BRANCH" },
 ];
+const CATEGORY_FILTERS = [
+  { value: "ALL", label: "All" },
+  { value: "MEDICINE", label: "Medicine" },
+  { value: "GROCERY", label: "Grocery" },
+  { value: "MEDICAL_SUPPLIES", label: "Medical Supplies" },
+] as const;
+const PAGE_SIZE = 50;
 const PANEL_CARD_STYLE = {
   background: "linear-gradient(180deg, rgba(250,252,255,0.98) 0%, rgba(233,240,253,0.95) 100%)",
   border: "1px solid rgba(77,108,196,0.22)",
@@ -63,6 +80,33 @@ const sanitizeBarcode = (...values: Array<string | null | undefined>) => {
   return "No Barcode";
 };
 
+const normalizeInventoryCategory = (value?: string) => {
+  const normalized = (value || "").trim().toUpperCase();
+  if (!normalized) return "";
+
+  if (normalized === "MEDICINE") return "MEDICINE";
+  if (normalized === "GROCERY") return "GROCERY";
+
+  if (
+    normalized === "EQUIPMENT" ||
+    normalized.includes("EQUIP") ||
+    normalized.includes("MEDICAL") ||
+    normalized.includes("SUPPL") ||
+    normalized === "MEDICAL/MEDICINES SUPPLIES" ||
+    normalized === "MEDICAL_SUPPLIES" ||
+    normalized === "MEDICALSUPPLIES"
+  ) {
+    return "MEDICAL_SUPPLIES";
+  }
+
+  return normalized;
+};
+
+const matchesCategoryFilter = (productCategory: string, selectedFilter: string) => {
+  if (selectedFilter === "ALL") return true;
+  return normalizeInventoryCategory(productCategory) === selectedFilter;
+};
+
 export default function AdminProductsPage() {
   const [searchParams] = useSearchParams();
   const initialBranchId = Number(searchParams.get("branch") || "1");
@@ -73,9 +117,13 @@ export default function AdminProductsPage() {
   const [selectedBranchId, setSelectedBranchId] = useState(Number.isFinite(initialBranchId) ? initialBranchId : 1);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [editingProduct, setEditingProduct] = useState<ProductEditorDraft | null>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -116,13 +164,20 @@ export default function AdminProductsPage() {
           id: Number(item.inventory_id),
           productId: Number(item.product_id || item.inventory_id),
           name: item.product_name_official || item.product_name || "Unnamed Product",
-          category: item.category || "Uncategorized",
+          shortName: (item.product_name_official || item.product_name || "Unnamed Product").slice(0, 24),
+          longName: item.product_name_official || item.product_name || "Unnamed Product",
+          category: item.category || item.category_type || item.classification || "Uncategorized",
           barcode: sanitizeBarcode(item.barcode, item.barcode_value),
           price: Number(item.price || 0),
+          priceWholesale: Number(item.price || 0),
+          priceSenior: Number(item.price || 0),
+          priceType: "regular" as const,
+          allowDiscount: true,
           stock: Number(item.quantity_on_hand || 0),
           location: item.gondola_code || "—",
         }));
         setProducts(rows);
+        setCurrentPage(0);
         setLastSync(new Date());
       } catch {
         setError("Network error while loading products.");
@@ -136,14 +191,64 @@ export default function AdminProductsPage() {
 
   const filteredProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((product) =>
-      [product.name, product.category, product.barcode, product.location, String(product.productId)]
+    return products.filter((product) => {
+      if (!matchesCategoryFilter(product.category, selectedCategoryFilter)) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        product.name,
+        product.shortName,
+        product.longName,
+        product.category,
+        product.barcode,
+        product.location,
+        String(product.productId),
+      ]
         .join(" ")
         .toLowerCase()
-        .includes(query),
-    );
-  }, [products, searchQuery]);
+        .includes(query);
+    });
+  }, [products, searchQuery, selectedCategoryFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages - 1);
+  const paginatedProducts = useMemo(() => {
+    const start = safeCurrentPage * PAGE_SIZE;
+    return filteredProducts.slice(start, start + PAGE_SIZE);
+  }, [filteredProducts, safeCurrentPage]);
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchQuery, selectedBranchId, selectedCategoryFilter]);
+
+  const openProductModal = (product: ProductRow) => {
+    setEditingProduct({ ...product });
+    setIsProductModalOpen(true);
+  };
+
+  const saveProductEdit = () => {
+    if (!editingProduct) return;
+    const sanitizedLongName = editingProduct.longName.trim() || "Unnamed Product";
+    const sanitizedShortName = editingProduct.shortName.trim() || sanitizedLongName.slice(0, 24);
+    const nextProduct: ProductRow = {
+      ...editingProduct,
+      longName: sanitizedLongName,
+      shortName: sanitizedShortName,
+      name: sanitizedLongName,
+      price: Number.isFinite(editingProduct.price) ? editingProduct.price : 0,
+      priceWholesale: Number.isFinite(editingProduct.priceWholesale) ? editingProduct.priceWholesale : 0,
+      priceSenior: Number.isFinite(editingProduct.priceSenior) ? editingProduct.priceSenior : 0,
+    };
+
+    setProducts((prev) => prev.map((product) => (product.id === nextProduct.id ? nextProduct : product)));
+    setIsProductModalOpen(false);
+    setEditingProduct(null);
+  };
 
   const totalStock = filteredProducts.reduce((sum, product) => sum + product.stock, 0);
   const totalValue = filteredProducts.reduce((sum, product) => sum + product.stock * product.price, 0);
@@ -193,6 +298,23 @@ export default function AdminProductsPage() {
             <input type="text" placeholder="Search product, barcode, category..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="flex-1 bg-transparent text-sm outline-none text-[#001d63]" />
           </div>
 
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {CATEGORY_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => setSelectedCategoryFilter(filter.value)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase transition-colors ${
+                  selectedCategoryFilter === filter.value
+                    ? "bg-[#062d8c] text-white"
+                    : "bg-white text-[#12337f] border border-[#c7d6fb] hover:bg-blue-50"
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+
           <div className="overflow-x-auto rounded-xl" style={TABLE_CARD_STYLE}>
             <table className="w-full min-w-[980px] text-sm">
               <thead>
@@ -201,8 +323,14 @@ export default function AdminProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {isLoading ? <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">Loading products...</td></tr> : filteredProducts.length === 0 ? <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">No products found.</td></tr> : filteredProducts.map((product, index) => (
-                  <tr key={product.id} style={{ background: index % 2 === 0 ? '#f7f9ff' : '#edf2ff' }}>
+                {isLoading ? <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">Loading products...</td></tr> : filteredProducts.length === 0 ? <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">No products found.</td></tr> : paginatedProducts.map((product, index) => (
+                  <tr
+                    key={product.id}
+                    onClick={() => openProductModal(product)}
+                    className="cursor-pointer"
+                    style={{ background: index % 2 === 0 ? '#f7f9ff' : '#edf2ff' }}
+                    title="Click to edit product details"
+                  >
                     <td className="px-3 py-2 text-[#001d63] font-semibold">{product.name}</td>
                     <td className="px-3 py-2 text-[#001d63]">{product.productId}</td>
                     <td className="px-3 py-2 text-[#001d63]">{product.category}</td>
@@ -215,7 +343,156 @@ export default function AdminProductsPage() {
               </tbody>
             </table>
           </div>
+
+          <div className="mt-4 flex items-center justify-between rounded-xl border border-[#dbe3f7] bg-white/80 px-4 py-3 text-sm text-[#12337f]">
+            <p className="font-semibold">
+              Showing {filteredProducts.length === 0 ? 0 : safeCurrentPage * PAGE_SIZE + 1} to {Math.min((safeCurrentPage + 1) * PAGE_SIZE, filteredProducts.length)} of {filteredProducts.length} products
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(0, page - 1))}
+                disabled={safeCurrentPage === 0}
+                className="rounded-lg border border-[#c7d6fb] bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <span className="text-xs font-bold uppercase tracking-wide text-[#4b5f95]">
+                Page {safeCurrentPage + 1} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages - 1, page + 1))}
+                disabled={safeCurrentPage >= totalPages - 1}
+                className="rounded-lg border border-[#c7d6fb] bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
+
+        {isProductModalOpen && editingProduct ? (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                <h3 className="text-xl font-black text-[#062d8c]">Product Details</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProductModalOpen(false);
+                    setEditingProduct(null);
+                  }}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold uppercase text-slate-600 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="grid gap-4 p-6 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Long Name (Database / POS Search)</label>
+                  <input
+                    type="text"
+                    value={editingProduct.longName}
+                    onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, longName: event.target.value } : prev))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Short Name (Receipt)</label>
+                  <input
+                    type="text"
+                    value={editingProduct.shortName}
+                    onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, shortName: event.target.value } : prev))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Regular Price</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editingProduct.price}
+                    onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, price: Number(event.target.value) || 0 } : prev))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Wholesale Price</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editingProduct.priceWholesale}
+                    onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, priceWholesale: Number(event.target.value) || 0 } : prev))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Senior Price</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editingProduct.priceSenior}
+                    onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, priceSenior: Number(event.target.value) || 0 } : prev))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Default Price Type</label>
+                  <select
+                    value={editingProduct.priceType}
+                    onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, priceType: event.target.value as ProductRow["priceType"] } : prev))}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  >
+                    <option value="regular">Regular</option>
+                    <option value="wholesale">Wholesale</option>
+                    <option value="senior">Senior</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={editingProduct.allowDiscount}
+                      onChange={(event) => setEditingProduct((prev) => (prev ? { ...prev, allowDiscount: event.target.checked } : prev))}
+                    />
+                    Apply item-level discounts
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProductModalOpen(false);
+                    setEditingProduct(null);
+                  }}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-black uppercase text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveProductEdit}
+                  className="rounded-xl bg-[#062d8c] px-4 py-2 text-xs font-black uppercase text-white hover:bg-[#041848]"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <AdminFooter lastSync={lastSync} />
       </div>
     </div>

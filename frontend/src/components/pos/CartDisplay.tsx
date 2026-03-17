@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Plus } from 'lucide-react';
 import { db } from '../../features/pos/api/db';
 
 function EditablePriceCell({ itemId, price, updateCartItemPrice }: { itemId: number; price: number; updateCartItemPrice: (id: number, price: number) => void }) {
@@ -90,7 +90,6 @@ const getInventoryBarcodeValue = (item: {
 
 interface CartDisplayProps {
   cartItems: CartItem[];
-  removeItemFromCart: (id: number) => void;
   currentItemDescription: string;
   setCurrentItemDescription: (desc: string) => void;
   discountTypeLabel: string;
@@ -112,7 +111,6 @@ interface CartDisplayProps {
 
 const CartDisplay: React.FC<CartDisplayProps> = ({
   cartItems,
-  removeItemFromCart,
   currentItemDescription,
   setCurrentItemDescription,
   discountTypeLabel,
@@ -135,45 +133,63 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
+  const [inventoryCache, setInventoryCache] = useState<any[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const cacheLoadedRef = useRef(false);
 
-  // Debounced inline search
+  // Load inventory once on mount
+  useEffect(() => {
+    const loadInventory = async () => {
+      if (cacheLoadedRef.current) return;
+      cacheLoadedRef.current = true;
+      setIsSearching(true);
+      try {
+        const items = await db.inventory.toArray();
+        setInventoryCache(items);
+      } catch (err) {
+        console.error('Failed to load inventory:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+    loadInventory();
+  }, []);
+
+  // Local search with useMemo (like AdminProductsPage)
+  const filteredSuggestions = useMemo(() => {
+    const query = currentItemDescription.trim().toLowerCase();
+    if (!query || inventoryCache.length === 0) return [];
+    
+    return inventoryCache
+      .filter(item => {
+        const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
+        const barcode = getInventoryBarcodeValue(item).toLowerCase();
+        return name.includes(query) || barcode.includes(query);
+      })
+      .slice(0, 8)
+      .map(item => ({
+        id: item.id!,
+        name: item.product_name_official || item.product_name || item.name || 'Unnamed',
+        barcode: getInventoryBarcodeValue(item),
+        price: item.price_regular || item.price || 0,
+        stock: item.quantity_on_hand || item.quantity || 0,
+      }));
+  }, [currentItemDescription, inventoryCache]);
+
+  // Update suggestions and show dropdown
   useEffect(() => {
     const query = currentItemDescription.trim();
+    
     if (!query) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const q = query.toLowerCase();
-        const results = await db.inventory
-          .filter(item => {
-            const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
-            const barcode = getInventoryBarcodeValue(item).toLowerCase();
-            return name.includes(q) || barcode.includes(q);
-          })
-          .limit(8)
-          .toArray();
-        setSuggestions(results.map(item => ({
-          id: item.id!,
-          name: item.product_name_official || item.product_name || item.name || 'Unnamed',
-          barcode: getInventoryBarcodeValue(item),
-          price: item.price_regular || item.price || 0,
-          stock: item.quantity_on_hand || item.quantity || 0,
-        })));
-        setShowSuggestions(true);
-        setHighlightIdx(0);
-      } catch (err) {
-        console.error('Suggestion search error:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [currentItemDescription]);
+    
+    setShowSuggestions(true);
+    setSuggestions(filteredSuggestions);
+    setHighlightIdx(0);
+  }, [filteredSuggestions, currentItemDescription]);
 
   const selectSuggestion = useCallback((item: SuggestionItem) => {
     onAddToCart(item);
@@ -251,9 +267,6 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
               )}
               <div className="flex justify-end items-center gap-4 font-bold text-[#062d8c]">
                 <span>{item.total.toFixed(2)}</span>
-                <button onClick={() => removeItemFromCart(item.id)} className="p-1.5 text-red-400 hover:text-red-600">
-                  <Trash2 className="h-4 w-4" />
-                </button>
               </div>
             </div>
           ))}
@@ -281,30 +294,47 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
             {showSuggestions && (
               <div
                 ref={dropdownRef}
-                className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+                className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col"
+                style={{ height: '300px' }}
               >
-                {isSearching && (
-                  <div className="px-4 py-3 text-xs text-slate-400">Searching…</div>
-                )}
-                {!isSearching && suggestions.length === 0 && (
-                  <div className="px-4 py-3 text-xs text-slate-400">No items found</div>
-                )}
-                {!isSearching && suggestions.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    onMouseDown={() => selectSuggestion(item)}
-                    onMouseEnter={() => setHighlightIdx(idx)}
-                    className={`flex items-center justify-between px-4 py-3 cursor-pointer border-b border-slate-50 last:border-0 ${
-                      idx === highlightIdx ? 'bg-blue-50' : 'hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-800 text-sm truncate">{item.name}</p>
-                      <p className="text-xs text-slate-400">Barcode: {item.barcode || 'No Barcode'} &bull; Stock: {item.stock}</p>
-                    </div>
-                    <span className="ml-4 shrink-0 font-black text-[#062d8c] text-sm">₱{item.price.toFixed(2)}</span>
+                {(isSearching || (suggestions.length === 0 && !isSearching)) && (
+                  <div className="flex-1 flex items-center justify-center px-4 py-3 text-xs text-slate-400">
+                    {isSearching ? (
+                      <>
+                        <span className="inline-block animate-spin mr-2">⟳</span> Searching…
+                      </>
+                    ) : (
+                      'No items found'
+                    )}
                   </div>
-                ))}
+                )}
+                {suggestions.length > 0 && (
+                  <div className="overflow-y-auto flex-1">
+                    {suggestions.map((item, idx) => (
+                      <div
+                        key={item.id}
+                        onMouseDown={() => selectSuggestion(item)}
+                        onMouseEnter={() => setHighlightIdx(idx)}
+                        className={`flex items-center justify-between px-4 py-3 cursor-pointer border-b border-slate-50 last:border-0 transition-colors ${
+                          idx === highlightIdx ? 'bg-blue-100' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-800 text-sm truncate">{item.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {item.barcode ? `${item.barcode}` : 'No Barcode'} 
+                            <span className={`ml-2 ${item.stock > 5 ? 'text-green-600' : item.stock > 0 ? 'text-orange-600' : 'text-red-600'} font-semibold`}>
+                              Stock: {item.stock}
+                            </span>
+                          </p>
+                        </div>
+                        <span className="ml-4 shrink-0 font-black text-[#062d8c] text-sm whitespace-nowrap">
+                          ₱{item.price.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

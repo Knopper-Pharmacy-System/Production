@@ -202,10 +202,31 @@ export default function AdminSidebar({
   onNavigate,
 }: AdminSidebarProps) {
   const navigate = useNavigate();
-  const [dashboardExpanded, setDashboardExpanded] = useState(true);
-  const [orderingExpanded, setOrderingExpanded] = useState(
-    ["PO List", "New Purchase Order", "Receive Delivery"].includes(activeItem),
+
+  const [prevActiveItem, setPrevActiveItem] = useState(activeItem);
+  const [dashboardExpanded, setDashboardExpanded] = useState(
+    ["Dashboard", "Overview", "Inventory", "Products"].includes(activeItem),
   );
+  const [orderingExpanded, setOrderingExpanded] = useState(
+    ["Ordering", "PO List", "New Purchase Order", "Receive Delivery"].includes(
+      activeItem,
+    ),
+  );
+
+  if (activeItem !== prevActiveItem) {
+    setPrevActiveItem(activeItem);
+    setDashboardExpanded(
+      ["Dashboard", "Overview", "Inventory", "Products"].includes(activeItem),
+    );
+    setOrderingExpanded(
+      [
+        "Ordering",
+        "PO List",
+        "New Purchase Order",
+        "Receive Delivery",
+      ].includes(activeItem),
+    );
+  }
 
   const handleNav = (item: string) => {
     onNavigate?.(item);
@@ -397,7 +418,6 @@ export default function AdminSidebar({
               />
             }
             active={activeItem === "Sales Reports"}
-            chevron="right"
             onClick={() => handleNav("Sales Reports")}
           />
 
@@ -411,7 +431,6 @@ export default function AdminSidebar({
               />
             }
             active={activeItem === "Branches"}
-            chevron="right"
             onClick={() => handleNav("Branches")}
           />
 
@@ -425,7 +444,6 @@ export default function AdminSidebar({
               />
             }
             active={activeItem === "Users"}
-            chevron="right"
             onClick={() => handleNav("Users")}
           />
 
@@ -439,7 +457,6 @@ export default function AdminSidebar({
               />
             }
             active={activeItem === "Inventory"}
-            chevron="right"
             onClick={() => handleNav("Inventory")}
           />
 
@@ -453,7 +470,6 @@ export default function AdminSidebar({
               />
             }
             active={activeItem === "Audit Sheet"}
-            chevron="right"
             onClick={() => handleNav("Audit Sheet")}
           />
 
@@ -596,7 +612,6 @@ export default function AdminSidebar({
               />
             }
             active={activeItem === "Settings"}
-            chevron="right"
             onClick={() => handleNav("Settings")}
           />
 

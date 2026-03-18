@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { logout } from "../../hooks/useAuth";
 import {
   LayoutDashboard,
   Package,
@@ -235,9 +236,8 @@ export default function AdminSidebar({
   };
 
   const handleLogout = () => {
-    // In a real app, this would call an actual logout function
     console.log("Logging out...");
-    navigate("/");
+    logout();
     onClose();
   };
 

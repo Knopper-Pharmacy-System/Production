@@ -402,7 +402,7 @@ export default function AdminPurchaseOrder() {
         onNavigate={() => {}}
       />
 
-      <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-5">
+      <div className="relative z-10 w-full max-w-450 mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 flex flex-col gap-5">
         {/* Header */}
         <AdminHeader
           onMenuClick={() => setSidebarOpen(true)}

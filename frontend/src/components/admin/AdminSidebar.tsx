@@ -12,7 +12,6 @@ import {
   ChevronRight,
   LogOut,
   ClipboardList,
-  ShoppingCart,
   Truck,
 } from "lucide-react";
 
@@ -35,6 +34,7 @@ const ROUTE_MAP: Record<string, string> = {
   Products: "/admin/products",
   Users: "/admin/users",
   "Purchase Order": "/admin/purchase-order",
+  Ordering: "/admin/purchase-orders",
   "PO List": "/admin/purchase-orders",
   "New Purchase Order": "/admin/purchase-order",
   "Receive Delivery": "/admin/receive-delivery",
@@ -268,45 +268,84 @@ export default function AdminSidebar({
         <div className="flex-1 overflow-y-auto px-7 flex flex-col gap-1">
           {/* Dashboard (expandable) */}
           <div className="flex flex-col gap-1">
-            <button
-              onClick={() => {
-                setDashboardExpanded((p) => !p);
-                handleNav("Dashboard");
-              }}
-              className="flex items-center w-full h-10.5 rounded-[7px] px-3.5 py-4 transition-colors"
+            <div
+              className="flex items-center w-full h-10.5 rounded-[7px] transition-colors"
               style={{
-                background: "rgba(3,53,175,0.5)",
-                border: "none",
-                cursor: "pointer",
+                background:
+                  activeItem === "Dashboard"
+                    ? "rgba(3,53,175,0.6)"
+                    : "transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (activeItem !== "Dashboard")
+                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+              }}
+              onMouseLeave={(e) => {
+                if (activeItem !== "Dashboard")
+                  e.currentTarget.style.background = "transparent";
               }}
             >
-              <div className="flex items-center gap-5 flex-1">
+              <button
+                onClick={() => handleNav("Dashboard")}
+                className="flex items-center gap-5 flex-1 px-3.5 h-full rounded-l-[7px]"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
                 <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
-                  <LayoutDashboard size={14} color="#CB3CFF" />
+                  <LayoutDashboard
+                    size={14}
+                    color={activeItem === "Dashboard" ? "#CB3CFF" : "#D6D6D6"}
+                  />
                 </span>
                 <span
                   className="text-sm leading-[1.2]"
                   style={{
                     fontFamily: "'Inter', sans-serif",
                     fontWeight: 500,
-                    color: "#CB3CFF",
+                    color: activeItem === "Dashboard" ? "#CB3CFF" : "#D6D6D6",
                   }}
                 >
                   Dashboard
                 </span>
-              </div>
-              <span className="ml-auto shrink-0 opacity-80">
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDashboardExpanded((p) => !p);
+                }}
+                className="shrink-0 px-3.5 h-full flex items-center rounded-r-[7px] opacity-80"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
                 {dashboardExpanded ? (
-                  <ChevronDown size={14} color="#AEB9E1" />
+                  <ChevronDown
+                    size={14}
+                    color={activeItem === "Dashboard" ? "#CB3CFF" : "#D6D6D6"}
+                  />
                 ) : (
-                  <ChevronRight size={14} color="#AEB9E1" />
+                  <ChevronRight
+                    size={14}
+                    color={activeItem === "Dashboard" ? "#CB3CFF" : "#D6D6D6"}
+                  />
                 )}
-              </span>
-            </button>
+              </button>
+            </div>
 
             {dashboardExpanded && (
               <div className="flex flex-col py-2">
-                {["Overview", "Inventory", "Products", "Tasks"].map((sub) => (
+                {["Overview", "Inventory", "Products"].map((sub) => (
                   <button
                     key={sub}
                     onClick={() => handleNav(sub)}
@@ -337,7 +376,7 @@ export default function AdminSidebar({
                       style={{
                         fontFamily: "'Inter', sans-serif",
                         fontWeight: 500,
-                        color: "#D6D6D6",
+                        color: activeItem === sub ? "#CB3CFF" : "#D6D6D6",
                       }}
                     >
                       {sub}
@@ -418,57 +457,82 @@ export default function AdminSidebar({
             onClick={() => handleNav("Audit Sheet")}
           />
 
-          {/* Purchase Order */}
-          <SidebarItem
-            label="Purchase Order"
-            icon={
-              <ShoppingCart
-                size={14}
-                color={activeItem === "Purchase Order" ? "#CB3CFF" : "#D6D6D6"}
-              />
-            }
-            active={activeItem === "Purchase Order"}
-            chevron="right"
-            onClick={() => handleNav("Purchase Order")}
-          />
-
           {/* Ordering (expandable) */}
           <div className="flex flex-col gap-1 py-1">
-            <button
-              onClick={() => {
-                setOrderingExpanded((p) => !p);
-                handleNav("PO List");
-              }}
-              className="flex items-center py-2 w-full h-10.5 rounded-[7px] px-3.5 transition-colors"
+            <div
+              className="flex items-center w-full h-10.5 rounded-[7px] transition-colors"
               style={{
-                background: "rgba(3,53,175,0.5)",
-                border: "none",
-                cursor: "pointer",
+                background:
+                  activeItem === "Ordering"
+                    ? "rgba(3,53,175,0.6)"
+                    : "transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (activeItem !== "Ordering")
+                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+              }}
+              onMouseLeave={(e) => {
+                if (activeItem !== "Ordering")
+                  e.currentTarget.style.background = "transparent";
               }}
             >
-              <div className="flex items-center gap-5 flex-1">
+              <button
+                onClick={() => handleNav("Ordering")}
+                className="flex items-center gap-5 flex-1 px-3.5 h-full rounded-l-[7px]"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
                 <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
-                  <Truck size={14} color="#CB3CFF" />
+                  <Truck
+                    size={14}
+                    color={activeItem === "Ordering" ? "#CB3CFF" : "#D6D6D6"}
+                  />
                 </span>
                 <span
                   className="text-sm leading-[1.2]"
                   style={{
                     fontFamily: "'Inter', sans-serif",
                     fontWeight: 500,
-                    color: "#CB3CFF",
+                    color: activeItem === "Ordering" ? "#CB3CFF" : "#D6D6D6",
                   }}
                 >
                   Ordering
                 </span>
-              </div>
-              <span className="ml-auto shrink-0 opacity-80">
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOrderingExpanded((p) => !p);
+                }}
+                className="shrink-0 px-3.5 h-full flex items-center rounded-r-[7px] opacity-80"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
                 {orderingExpanded ? (
-                  <ChevronDown size={14} color="#AEB9E1" />
+                  <ChevronDown
+                    size={14}
+                    color={activeItem === "Ordering" ? "#CB3CFF" : "#D6D6D6"}
+                  />
                 ) : (
-                  <ChevronRight size={14} color="#AEB9E1" />
+                  <ChevronRight
+                    size={14}
+                    color={activeItem === "Ordering" ? "#CB3CFF" : "#D6D6D6"}
+                  />
                 )}
-              </span>
-            </button>
+              </button>
+            </div>
 
             {orderingExpanded && (
               <div className="flex flex-col py-2">
@@ -504,7 +568,7 @@ export default function AdminSidebar({
                         style={{
                           fontFamily: "'Inter', sans-serif",
                           fontWeight: 500,
-                          color: "#D6D6D6",
+                          color: activeItem === sub ? "#CB3CFF" : "#D6D6D6",
                         }}
                       >
                         {sub}

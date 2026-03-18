@@ -11,6 +11,10 @@ import AdminBranchesPage from "./pages/admin/AdminBranchesPage";
 import AdminProductsPage from "./pages/admin/AdminProductsPage";
 import AdminTransactionsPage from "./pages/admin/AdminTransactionsPage";
 import AdminAlertsPage from "./pages/admin/AdminAlertsPage";
+import AdminPurchaseOrderPage from "./pages/admin/AdminPurchaseOrderPage";
+import AdminPurchaseOrderListPage from "./pages/admin/AdminPurchaseOrderListPage";
+import AdminPurchaseOrderDetailPage from "./pages/admin/AdminPurchaseOrderDetailPage";
+import AdminReceiveDeliveryPage from "./pages/admin/AdminReceiveDeliveryPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -153,6 +157,38 @@ function App() {
           element={
             <ProtectedRoute expectedRole="admin">
               <AdminSalesReportPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/purchase-orders"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminPurchaseOrderListPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/purchase-order"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminPurchaseOrderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/purchase-order/:id"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminPurchaseOrderDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/receive-delivery"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminReceiveDeliveryPage />
             </ProtectedRoute>
           }
         />

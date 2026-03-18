@@ -12,10 +12,9 @@ import {
   ChevronRight,
   LogOut,
   ClipboardList,
-  Receipt,
+  ShoppingCart,
+  Truck,
 } from "lucide-react";
-import logoSolid from "../../assets/logo_solid.png";
-import { logout } from "../../hooks/useAuth";
 
 interface AdminSidebarProps {
   isOpen: boolean;
@@ -24,7 +23,25 @@ interface AdminSidebarProps {
   onNavigate?: (item: string) => void;
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+// --- Route map ---------------------------------------------------------------
+
+const ROUTE_MAP: Record<string, string> = {
+  Dashboard: "/admin",
+  Overview: "/admin",
+  "Audit Sheet": "/admin/audit-sheet",
+  Inventory: "/admin/inventory",
+  "Sales Reports": "/admin/sales-reports",
+  Branches: "/admin/branches",
+  Products: "/admin/products",
+  Users: "/admin/users",
+  "Purchase Order": "/admin/purchase-order",
+  "PO List": "/admin/purchase-orders",
+  "New Purchase Order": "/admin/purchase-order",
+  "Receive Delivery": "/admin/receive-delivery",
+  Settings: "/admin/settings",
+};
+
+// --- Sub-components ----------------------------------------------------------
 
 function Divider() {
   return (
@@ -98,91 +115,10 @@ function SidebarItem({
   );
 }
 
-function ExitConfirmModal({
-  isOpen,
-  onCancel,
-  onConfirm,
-}: {
-  isOpen: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#02124a]/70 backdrop-blur-[2px] p-4">
-      <div
-        className="w-full max-w-md rounded-2xl p-6 relative overflow-hidden"
-        style={{
-          background:
-            "radial-gradient(circle at top left, rgba(117,166,255,0.22) 0%, transparent 38%), linear-gradient(150deg, #052275 0%, #0a3aaa 55%, #1d57d2 100%)",
-          border: "1px solid rgba(255,255,255,0.18)",
-          boxShadow:
-            "0 22px 46px rgba(0, 16, 70, 0.45), inset 0 1px 0 rgba(255,255,255,0.14)",
-        }}
-      >
-        <div
-          className="absolute inset-x-0 top-0 h-1"
-          style={{ background: "linear-gradient(90deg, #88b1ff 0%, #cb3cff 100%)" }}
-        />
-
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-2xl"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.1) 100%)",
-              border: "1px solid rgba(255,255,255,0.22)",
-            }}
-          >
-            <LogOut size={22} color="#ffd6d6" />
-          </div>
-          <div>
-            <h3 className="text-lg font-black" style={{ color: "#eef4ff" }}>
-              Exit Admin Panel?
-            </h3>
-            <p className="text-sm mt-1" style={{ color: "rgba(221,232,255,0.78)" }}>
-              You will be logged out and returned to the login screen.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl px-5 py-3 text-sm font-black uppercase tracking-wide transition-colors"
-            style={{
-              border: "1px solid rgba(193,214,255,0.38)",
-              background: "rgba(255,255,255,0.12)",
-              color: "#e6efff",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="rounded-xl px-5 py-3 text-sm font-black uppercase tracking-wide text-white transition-opacity hover:opacity-90"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(238,51,51,0.95) 0%, rgba(198,29,29,0.95) 100%)",
-              border: "1px solid rgba(255,198,198,0.45)",
-              boxShadow: "0 10px 20px rgba(119, 15, 15, 0.3)",
-            }}
-          >
-            Exit
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserProfile({ onClick }: { onClick: () => void }) {
+function UserProfile({ onLogout }: { onLogout: () => void }) {
   return (
     <button
-      onClick={onClick}
+      onClick={onLogout}
       className="flex items-center w-full px-1.5 py-1.5 rounded-[7px] transition-colors"
       style={{ background: "transparent", border: "none", cursor: "pointer" }}
       onMouseEnter={(e) => {
@@ -198,11 +134,35 @@ function UserProfile({ onClick }: { onClick: () => void }) {
         className="shrink-0 w-8 h-8 rounded-full overflow-hidden flex items-center justify-center"
         style={{ background: "rgba(203,60,255,0.2)" }}
       >
-        <img
-          src={logoSolid}
-          alt="Knopper"
-          className="w-6.5 h-6.5 object-contain"
-        />
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M12 2L2 7L12 12L22 7L12 2Z"
+            stroke="#CB3CFF"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M2 17L12 22L22 17"
+            stroke="#CB3CFF"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M2 12L12 17L22 12"
+            stroke="#CB3CFF"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </div>
 
       {/* Text */}
@@ -233,7 +193,7 @@ function UserProfile({ onClick }: { onClick: () => void }) {
   );
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+// --- Main Component ----------------------------------------------------------
 
 export default function AdminSidebar({
   isOpen,
@@ -241,30 +201,23 @@ export default function AdminSidebar({
   activeItem = "Dashboard",
   onNavigate,
 }: AdminSidebarProps) {
-  const [dashboardExpanded, setDashboardExpanded] = useState(true);
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const navigate = useNavigate();
-
-  const NAV_ROUTES: Record<string, string> = {
-    Dashboard: "/admin",
-    Overview: "/admin",
-    "Sales Reports": "/admin/sales-reports",
-    Branches: "/admin/branches",
-    Products: "/admin/products",
-    Transactions: "/admin/transactions",
-    Alerts: "/admin/alerts",
-    Users: "/admin/users",
-    Inventory: "/admin/inventory",
-    "Audit Sheet": "/admin/audit-sheet",
-    Settings: "/admin/settings",
-  };
+  const [dashboardExpanded, setDashboardExpanded] = useState(true);
+  const [orderingExpanded, setOrderingExpanded] = useState(
+    ["PO List", "New Purchase Order", "Receive Delivery"].includes(activeItem),
+  );
 
   const handleNav = (item: string) => {
     onNavigate?.(item);
-    if (NAV_ROUTES[item]) {
-      navigate(NAV_ROUTES[item]);
-      onClose();
-    }
+    if (ROUTE_MAP[item]) navigate(ROUTE_MAP[item]);
+    onClose();
+  };
+
+  const handleLogout = () => {
+    // In a real app, this would call an actual logout function
+    console.log("Logging out...");
+    navigate("/");
+    onClose();
   };
 
   return (
@@ -277,12 +230,6 @@ export default function AdminSidebar({
           onClick={onClose}
         />
       )}
-
-      <ExitConfirmModal
-        isOpen={showExitConfirm}
-        onCancel={() => setShowExitConfirm(false)}
-        onConfirm={() => logout()}
-      />
 
       {/* Side Panel */}
       <div
@@ -305,7 +252,7 @@ export default function AdminSidebar({
           >
             <Search size={14} color="#062D8C" />
             <span
-              className="text-xs leading-3.5 whitespace-nowrap"
+              className="text-sm leading-[1.2] whitespace-nowrap"
               style={{
                 fontFamily: "'Inter', sans-serif",
                 fontWeight: 500,
@@ -326,7 +273,7 @@ export default function AdminSidebar({
                 setDashboardExpanded((p) => !p);
                 handleNav("Dashboard");
               }}
-              className="flex items-center w-full h-10.5 rounded-[7px] px-3.5 transition-colors"
+              className="flex items-center w-full h-10.5 rounded-[7px] px-3.5 py-4 transition-colors"
               style={{
                 background: "rgba(3,53,175,0.5)",
                 border: "none",
@@ -338,7 +285,7 @@ export default function AdminSidebar({
                   <LayoutDashboard size={14} color="#CB3CFF" />
                 </span>
                 <span
-                  className="text-sm leading-3.5"
+                  className="text-sm leading-[1.2]"
                   style={{
                     fontFamily: "'Inter', sans-serif",
                     fontWeight: 500,
@@ -358,12 +305,12 @@ export default function AdminSidebar({
             </button>
 
             {dashboardExpanded && (
-              <div className="flex flex-col">
-                { ["Overview", "Products", "Alerts"].map((sub) => (
+              <div className="flex flex-col py-2">
+                {["Overview", "Inventory", "Products", "Tasks"].map((sub) => (
                   <button
                     key={sub}
                     onClick={() => handleNav(sub)}
-                    className="flex items-center w-full h-10.5 rounded-[7px] px-3.5 transition-colors"
+                    className="flex items-center py-2 w-full h-10.5 rounded-[7px] px-3.5 transition-colors"
                     style={{
                       background:
                         activeItem === sub
@@ -386,7 +333,7 @@ export default function AdminSidebar({
                     }}
                   >
                     <span
-                      className="text-sm leading-3.5 whitespace-nowrap"
+                      className="text-sm leading-[1.2] whitespace-nowrap"
                       style={{
                         fontFamily: "'Inter', sans-serif",
                         fontWeight: 500,
@@ -413,19 +360,6 @@ export default function AdminSidebar({
             active={activeItem === "Sales Reports"}
             chevron="right"
             onClick={() => handleNav("Sales Reports")}
-          />
-
-          <SidebarItem
-            label="Transactions"
-            icon={
-              <Receipt
-                size={14}
-                color={activeItem === "Transactions" ? "#CB3CFF" : "#D6D6D6"}
-              />
-            }
-            active={activeItem === "Transactions"}
-            chevron="right"
-            onClick={() => handleNav("Transactions")}
           />
 
           {/* Branches */}
@@ -484,6 +418,104 @@ export default function AdminSidebar({
             onClick={() => handleNav("Audit Sheet")}
           />
 
+          {/* Purchase Order */}
+          <SidebarItem
+            label="Purchase Order"
+            icon={
+              <ShoppingCart
+                size={14}
+                color={activeItem === "Purchase Order" ? "#CB3CFF" : "#D6D6D6"}
+              />
+            }
+            active={activeItem === "Purchase Order"}
+            chevron="right"
+            onClick={() => handleNav("Purchase Order")}
+          />
+
+          {/* Ordering (expandable) */}
+          <div className="flex flex-col gap-1 py-1">
+            <button
+              onClick={() => {
+                setOrderingExpanded((p) => !p);
+                handleNav("PO List");
+              }}
+              className="flex items-center py-2 w-full h-10.5 rounded-[7px] px-3.5 transition-colors"
+              style={{
+                background: "rgba(3,53,175,0.5)",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              <div className="flex items-center gap-5 flex-1">
+                <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
+                  <Truck size={14} color="#CB3CFF" />
+                </span>
+                <span
+                  className="text-sm leading-[1.2]"
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 500,
+                    color: "#CB3CFF",
+                  }}
+                >
+                  Ordering
+                </span>
+              </div>
+              <span className="ml-auto shrink-0 opacity-80">
+                {orderingExpanded ? (
+                  <ChevronDown size={14} color="#AEB9E1" />
+                ) : (
+                  <ChevronRight size={14} color="#AEB9E1" />
+                )}
+              </span>
+            </button>
+
+            {orderingExpanded && (
+              <div className="flex flex-col py-2">
+                {["PO List", "New Purchase Order", "Receive Delivery"].map(
+                  (sub) => (
+                    <button
+                      key={sub}
+                      onClick={() => handleNav(sub)}
+                      className="flex items-center w-full h-10.5 py-2 rounded-[7px] px-3.5 transition-colors"
+                      style={{
+                        background:
+                          activeItem === sub
+                            ? "rgba(255,255,255,0.08)"
+                            : "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (activeItem !== sub)
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "rgba(255,255,255,0.05)";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (activeItem !== sub)
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "transparent";
+                      }}
+                    >
+                      <span
+                        className="text-sm leading-[1.2] whitespace-nowrap"
+                        style={{
+                          fontFamily: "'Inter', sans-serif",
+                          fontWeight: 500,
+                          color: "#D6D6D6",
+                        }}
+                      >
+                        {sub}
+                      </span>
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex-1 min-h-6" />
         </div>
 
@@ -506,7 +538,7 @@ export default function AdminSidebar({
 
           <Divider />
 
-          <UserProfile onClick={() => setShowExitConfirm(true)} />
+          <UserProfile onLogout={handleLogout} />
         </div>
       </div>
     </>

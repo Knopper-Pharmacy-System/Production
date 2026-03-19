@@ -395,7 +395,7 @@ export default function AdminDashboardPage() {
     };
 
     loadDashboardData();
-  }, [refreshVersion, selectedBranch, inventoryItems]);
+  }, [refreshVersion, selectedBranch]);
 
   const lowStockProducts = getLowStockRows(inventoryItems);
   const nearExpiryProducts = getNearExpiryRows(inventoryItems);

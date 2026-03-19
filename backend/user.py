@@ -158,6 +158,137 @@ def get_all_branches():
     finally:
         cur.close()
 
+
+@user_bp.route('/branches/summary', methods=['GET'])
+@jwt_required()
+def get_branch_summaries():
+    claims = get_jwt()
+    if claims['role'] not in ['admin', 'manager']:
+        return jsonify({"message": "Access Denied"}), 403
+
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT
+                b.branch_id,
+                b.branch_name,
+                b.branch_code,
+                COALESCE(uc.total_users, 0) AS total_users,
+                COALESCE(uc.active_users, 0) AS active_users,
+                COALESCE(uc.manager_count, 0) AS manager_count,
+                COALESCE(inv.inventory_items, 0) AS inventory_items,
+                COALESCE(inv.total_units, 0) AS total_units,
+                COALESCE(inv.low_stock_count, 0) AS low_stock_count,
+                COALESCE(inv.critical_count, 0) AS critical_count,
+                COALESCE(inv.inventory_value, 0) AS inventory_value
+            FROM BRANCHES b
+            LEFT JOIN (
+                SELECT
+                    u.branch_id,
+                    COUNT(*) AS total_users,
+                    SUM(CASE WHEN u.is_active = TRUE THEN 1 ELSE 0 END) AS active_users,
+                    SUM(CASE WHEN LOWER(u.role) IN ('admin', 'manager') THEN 1 ELSE 0 END) AS manager_count
+                FROM USERS u
+                GROUP BY u.branch_id
+            ) uc ON uc.branch_id = b.branch_id
+            LEFT JOIN (
+                SELECT
+                    bi.branch_id,
+                    COUNT(*) AS inventory_items,
+                    SUM(IFNULL(bi.quantity_on_hand, 0)) AS total_units,
+                    SUM(CASE WHEN IFNULL(bi.quantity_on_hand, 0) < 10 THEN 1 ELSE 0 END) AS low_stock_count,
+                    SUM(CASE WHEN IFNULL(bi.quantity_on_hand, 0) < 5 THEN 1 ELSE 0 END) AS critical_count,
+                    SUM(IFNULL(bi.quantity_on_hand, 0) * IFNULL(p.price_regular, 0)) AS inventory_value
+                FROM BRANCH_INVENTORY bi
+                LEFT JOIN PRODUCTS p ON p.product_id = bi.product_id
+                GROUP BY bi.branch_id
+            ) inv ON inv.branch_id = b.branch_id
+            ORDER BY b.branch_name ASC
+            """
+        )
+
+        rows = cur.fetchall()
+        result = [
+            {
+                "branch_id": row[0],
+                "branch_name": row[1],
+                "branch_code": row[2],
+                "total_users": int(row[3] or 0),
+                "active_users": int(row[4] or 0),
+                "manager_count": int(row[5] or 0),
+                "inventory_items": int(row[6] or 0),
+                "total_units": int(row[7] or 0),
+                "low_stock_count": int(row[8] or 0),
+                "critical_count": int(row[9] or 0),
+                "inventory_value": float(row[10] or 0),
+            }
+            for row in rows
+        ]
+
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
+
+@user_bp.route('/branches', methods=['POST'])
+@jwt_required()
+def create_branch():
+    claims = get_jwt()
+    if claims.get('role') != 'admin':
+        return jsonify({"message": "Access Denied: Only Administrators can create branches."}), 403
+
+    data = request.get_json(silent=True) or {}
+    branch_name = (data.get('branch_name') or '').strip()
+    branch_code = (data.get('branch_code') or '').strip()
+
+    if not branch_name or not branch_code:
+        return jsonify({"message": "branch_name and branch_code are required."}), 400
+
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT branch_id
+            FROM BRANCHES
+            WHERE branch_name = %s OR branch_code = %s
+            LIMIT 1
+            """,
+            (branch_name, branch_code),
+        )
+        if cur.fetchone():
+            return jsonify({"message": "Branch name or branch code already exists."}), 409
+
+        cur.execute("SELECT IFNULL(MAX(branch_id), 0) + 1 FROM BRANCHES")
+        next_id = int(cur.fetchone()[0])
+
+        cur.execute(
+            """
+            INSERT INTO BRANCHES (branch_id, branch_name, branch_code)
+            VALUES (%s, %s, %s)
+            """,
+            (next_id, branch_name, branch_code),
+        )
+        mysql.connection.commit()
+
+        return jsonify(
+            {
+                "message": "Branch created successfully.",
+                "branch": {
+                    "branch_id": next_id,
+                    "branch_name": branch_name,
+                    "branch_code": branch_code,
+                },
+            }
+        ), 201
+    except Exception as e:
+        mysql.connection.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
 #  SETUP ADMIN 
 @user_bp.route('/setup-admin', methods=['POST'])
 def setup_admin():

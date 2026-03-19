@@ -19,6 +19,20 @@ import { getToken } from "../../hooks/useAuth";
 
 type BranchStatus = "Healthy" | "Needs Attention" | "Setup Needed";
 
+type ApiBranchSummary = {
+  branch_id: number;
+  branch_name: string;
+  branch_code: string;
+  total_users: number;
+  active_users: number;
+  manager_count: number;
+  inventory_items: number;
+  total_units: number;
+  low_stock_count: number;
+  critical_count: number;
+  inventory_value: number;
+};
+
 type ApiBranchInfo = {
   branch_id: number;
   branch_name: string;
@@ -59,7 +73,6 @@ type BranchRow = {
 
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
-const BRANCH_SCAN_LIMIT = 30;
 const ITEMS_PER_PAGE = 10;
 
 const PANEL_CARD_STYLE = {
@@ -100,13 +113,6 @@ const BRANCH_METADATA: Record<number, { address: string; city: string }> = {
   },
 };
 
-const ROLE_IS_MANAGER = (role: string) => {
-  const normalized = role.trim().toLowerCase();
-  return normalized === "admin" || normalized === "manager";
-};
-
-const USER_IS_ACTIVE = (status: string) => status.trim().toLowerCase() === "active";
-
 const peso = (value: number) =>
   `₱${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -143,6 +149,12 @@ export default function AdminBranchesPage() {
   const [branches, setBranches] = useState<BranchRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateBranchOpen, setIsCreateBranchOpen] = useState(false);
+  const [newBranchName, setNewBranchName] = useState("");
+  const [newBranchCode, setNewBranchCode] = useState("");
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [createBranchError, setCreateBranchError] = useState<string | null>(null);
+  const [createBranchSuccess, setCreateBranchSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -174,139 +186,209 @@ export default function AdminBranchesPage() {
 
         const headers = { Authorization: `Bearer ${token}` };
 
-        const [usersResponse, discoveredBranches] = await Promise.all([
-          fetch(`${API_BASE_URL}/users`, { headers }),
-          Promise.all(
-            Array.from({ length: BRANCH_SCAN_LIMIT }, (_, index) => index + 1).map(
-              async (branchId) => {
-                try {
-                  const response = await fetch(`${API_BASE_URL}/branch/${branchId}`, {
-                    headers,
-                  });
-                  if (!response.ok) return null;
-                  const payload = (await response.json()) as ApiBranchInfo;
-                  return payload;
-                } catch {
-                  return null;
-                }
-              },
-            ),
-          ),
-        ]);
+        const mapSummaryRowsToBranches = (rows: ApiBranchSummary[]) =>
+          rows
+            .map((branch) => {
+              const totalUnits = Number(branch.total_units || 0);
+              const lowStockCount = Number(branch.low_stock_count || 0);
+              const criticalCount = Number(branch.critical_count || 0);
+              const inventoryValue = Number(branch.inventory_value || 0);
+              const inventoryItems = Number(branch.inventory_items || 0);
+              const userCount = Number(branch.total_users || 0);
+              const activeUsers = Number(branch.active_users || 0);
+              const managerCount = Number(branch.manager_count || 0);
 
-        const usersData = usersResponse.ok
-          ? ((await usersResponse.json()) as ApiUserRecord[])
-          : [];
-
-        const validBranches = discoveredBranches.filter(
-          (branch): branch is ApiBranchInfo => branch !== null,
-        );
-
-        if (validBranches.length === 0) {
-          setBranches([]);
-          setError("No branches were discovered from the current API.");
-          return;
-        }
-
-        const usersByBranch = new Map<
-          string,
-          { total: number; active: number; managers: number }
-        >();
-
-        usersData.forEach((user) => {
-          const branchName = user.branch || "Unknown Branch";
-          const current = usersByBranch.get(branchName) || {
-            total: 0,
-            active: 0,
-            managers: 0,
-          };
-          current.total += 1;
-          if (USER_IS_ACTIVE(user.status)) current.active += 1;
-          if (ROLE_IS_MANAGER(user.role)) current.managers += 1;
-          usersByBranch.set(branchName, current);
-        });
-
-        const inventoryRows = await Promise.all(
-          validBranches.map(async (branch) => {
-            try {
-              const response = await fetch(
-                `${API_BASE_URL}/inventory/branch/${branch.branch_id}`,
-                { headers },
-              );
-              if (!response.ok) {
-                return { branchId: branch.branch_id, items: [] as ApiInventoryItem[] };
+              let status: BranchStatus = "Healthy";
+              if (inventoryItems === 0 && userCount === 0) {
+                status = "Setup Needed";
+              } else if (criticalCount > 0 || lowStockCount > 0) {
+                status = "Needs Attention";
               }
-              const payload = (await response.json()) as ApiInventoryItem[];
+
               return {
-                branchId: branch.branch_id,
-                items: Array.isArray(payload) ? payload : [],
-              };
-            } catch {
-              return { branchId: branch.branch_id, items: [] as ApiInventoryItem[] };
-            }
-          }),
-        );
+                id: branch.branch_id,
+                name: branch.branch_name,
+                code: branch.branch_code || `BR-${String(branch.branch_id).padStart(3, "0")}`,
+                address: BRANCH_METADATA[branch.branch_id]?.address || "Address not set",
+                city: BRANCH_METADATA[branch.branch_id]?.city || "Unknown City",
+                status,
+                userCount,
+                activeUsers,
+                managerCount,
+                inventoryItems,
+                totalUnits,
+                lowStockCount,
+                criticalCount,
+                inventoryValue,
+              } satisfies BranchRow;
+            })
+            .sort((first, second) => first.name.localeCompare(second.name));
 
-        const inventoryByBranch = new Map(
-          inventoryRows.map((entry) => [entry.branchId, entry.items]),
-        );
+        const loadBranchesFromLegacyEndpoints = async () => {
+          let branchesResponse: Response | null = null;
+          let usersResponse: Response | null = null;
 
-        const nextBranches = validBranches
-          .map((branch) => {
-            const inventoryItems = inventoryByBranch.get(branch.branch_id) || [];
-            const userStats = usersByBranch.get(branch.branch_name) || {
+          try {
+            const [br, ur] = await Promise.all([
+              fetch(`${API_BASE_URL}/branches`, { headers }).catch((err) => {
+                throw new Error(`Branches endpoint failed: ${err.message}`);
+              }),
+              fetch(`${API_BASE_URL}/users`, { headers }).catch((err) => {
+                throw new Error(`Users endpoint failed: ${err.message}`);
+              }),
+            ]);
+            branchesResponse = br;
+            usersResponse = ur;
+          } catch (fetchErr) {
+            const message = fetchErr instanceof Error ? fetchErr.message : "Failed to fetch data";
+            console.error("[AdminBranches] Fetch error:", message);
+            throw new Error(`${message}. API Base: ${API_BASE_URL}`);
+          }
+
+          if (!branchesResponse.ok) {
+            const branchErr = await branchesResponse.json().catch(() => ({})) as Record<string, unknown>;
+            const errorMsg = (branchErr.message || branchErr.error || "Failed to load branches list.") as string;
+            throw new Error(`Branches API error (${branchesResponse.status}): ${errorMsg}`);
+          }
+
+          const branchRowsRaw = (await branchesResponse.json()) as ApiBranchInfo[];
+          const branchRows = Array.isArray(branchRowsRaw) ? branchRowsRaw : [];
+
+          const usersData = usersResponse.ok
+            ? ((await usersResponse.json()) as ApiUserRecord[])
+            : [];
+
+          const usersByBranch = new Map<string, { total: number; active: number; managers: number }>();
+          usersData.forEach((user) => {
+            const branchName = user.branch || "Unknown Branch";
+            const current = usersByBranch.get(branchName) || {
               total: 0,
               active: 0,
               managers: 0,
             };
+            current.total += 1;
+            if (user.status?.trim().toLowerCase() === "active") current.active += 1;
+            const role = user.role?.trim().toLowerCase();
+            if (role === "admin" || role === "manager") current.managers += 1;
+            usersByBranch.set(branchName, current);
+          });
 
-            const totalUnits = inventoryItems.reduce(
-              (sum, item) => sum + Number(item.quantity_on_hand || 0),
-              0,
-            );
-            const lowStockCount = inventoryItems.filter(
-              (item) => Number(item.quantity_on_hand || 0) < 10,
-            ).length;
-            const criticalCount = inventoryItems.filter(
-              (item) => Number(item.quantity_on_hand || 0) < 5,
-            ).length;
-            const inventoryValue = inventoryItems.reduce(
-              (sum, item) =>
-                sum + Number(item.quantity_on_hand || 0) * Number(item.price || 0),
-              0,
-            );
+          const inventoryRows = await Promise.all(
+            branchRows.map(async (branch) => {
+              try {
+                const response = await fetch(`${API_BASE_URL}/inventory/branch/${branch.branch_id}`, { headers });
+                if (!response.ok) {
+                  return { branchId: branch.branch_id, items: [] as ApiInventoryItem[] };
+                }
+                const payload = (await response.json()) as ApiInventoryItem[];
+                return {
+                  branchId: branch.branch_id,
+                  items: Array.isArray(payload) ? payload : [],
+                };
+              } catch {
+                return { branchId: branch.branch_id, items: [] as ApiInventoryItem[] };
+              }
+            }),
+          );
 
-            let status: BranchStatus = "Healthy";
-            if (inventoryItems.length === 0 && userStats.total === 0) {
-              status = "Setup Needed";
-            } else if (criticalCount > 0 || lowStockCount > 0) {
-              status = "Needs Attention";
+          const inventoryByBranch = new Map(inventoryRows.map((entry) => [entry.branchId, entry.items]));
+
+          return branchRows
+            .map((branch) => {
+              const inventoryItems = inventoryByBranch.get(branch.branch_id) || [];
+              const userStats = usersByBranch.get(branch.branch_name) || {
+                total: 0,
+                active: 0,
+                managers: 0,
+              };
+
+              const totalUnits = inventoryItems.reduce((sum, item) => sum + Number(item.quantity_on_hand || 0), 0);
+              const lowStockCount = inventoryItems.filter((item) => Number(item.quantity_on_hand || 0) < 10).length;
+              const criticalCount = inventoryItems.filter((item) => Number(item.quantity_on_hand || 0) < 5).length;
+              const inventoryValue = inventoryItems.reduce(
+                (sum, item) => sum + Number(item.quantity_on_hand || 0) * Number(item.price || 0),
+                0,
+              );
+
+              let status: BranchStatus = "Healthy";
+              if (inventoryItems.length === 0 && userStats.total === 0) {
+                status = "Setup Needed";
+              } else if (criticalCount > 0 || lowStockCount > 0) {
+                status = "Needs Attention";
+              }
+
+              return {
+                id: branch.branch_id,
+                name: branch.branch_name,
+                code: branch.branch_code || `BR-${String(branch.branch_id).padStart(3, "0")}`,
+                address: BRANCH_METADATA[branch.branch_id]?.address || "Address not set",
+                city: BRANCH_METADATA[branch.branch_id]?.city || "Unknown City",
+                status,
+                userCount: userStats.total,
+                activeUsers: userStats.active,
+                managerCount: userStats.managers,
+                inventoryItems: inventoryItems.length,
+                totalUnits,
+                lowStockCount,
+                criticalCount,
+                inventoryValue,
+              } satisfies BranchRow;
+            })
+            .sort((first, second) => first.name.localeCompare(second.name));
+        };
+
+        let nextBranches: BranchRow[] = [];
+        let usedFallback = false;
+        let loadError = "";
+
+        try {
+          const summaryResponse = await fetch(`${API_BASE_URL}/branches/summary`, { headers });
+
+          if (summaryResponse.ok) {
+            const payload = await summaryResponse.json();
+            if (Array.isArray(payload)) {
+              nextBranches = mapSummaryRowsToBranches(payload as ApiBranchSummary[]);
+            } else {
+              usedFallback = true;
+              loadError = "summary API returned invalid format";
+              nextBranches = await loadBranchesFromLegacyEndpoints();
             }
+          } else {
+            usedFallback = true;
+            loadError = `summary API returned ${summaryResponse.status}`;
+            nextBranches = await loadBranchesFromLegacyEndpoints();
+          }
+        } catch (summaryErr) {
+          const summaryMessage = summaryErr instanceof Error ? summaryErr.message : "Unknown error";
+          console.error("[AdminBranches] Summary fetch failed:", summaryMessage);
+          usedFallback = true;
+          loadError = summaryMessage;
+          
+          try {
+            nextBranches = await loadBranchesFromLegacyEndpoints();
+          } catch (legacyErr) {
+            const legacyMessage = legacyErr instanceof Error ? legacyErr.message : "Unknown error";
+            console.error("[AdminBranches] Legacy fetch also failed:", legacyMessage);
+            throw new Error(`Failed to load branches. Summary: ${summaryMessage}. Fallback: ${legacyMessage}`);
+          }
+        }
 
-            return {
-              id: branch.branch_id,
-              name: branch.branch_name,
-              code: branch.branch_code || `BR-${String(branch.branch_id).padStart(3, "0")}`,
-              address: BRANCH_METADATA[branch.branch_id]?.address || "Address not set",
-              city: BRANCH_METADATA[branch.branch_id]?.city || "Unknown City",
-              status,
-              userCount: userStats.total,
-              activeUsers: userStats.active,
-              managerCount: userStats.managers,
-              inventoryItems: inventoryItems.length,
-              totalUnits,
-              lowStockCount,
-              criticalCount,
-              inventoryValue,
-            } satisfies BranchRow;
-          })
-          .sort((first, second) => first.name.localeCompare(second.name));
+        if (nextBranches.length === 0) {
+          setBranches([]);
+          setError("No branches were found.");
+          return;
+        }
 
         setBranches(nextBranches);
         setSelectedBranchId((current) => current ?? nextBranches[0]?.id ?? null);
+        if (usedFallback) {
+          setError(`Loaded branches using fallback mode (${loadError}).`);
+        }
         setLastSync(new Date());
-      } catch {
-        setError("Network error while loading branches.");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        console.error("[AdminBranches] Load error:", message);
+        setError(message || "Network error while loading branches.");
         setBranches([]);
       } finally {
         setIsLoading(false);
@@ -315,6 +397,61 @@ export default function AdminBranchesPage() {
 
     void loadBranches();
   }, [refreshVersion]);
+
+  const createBranch = async () => {
+    const branchName = newBranchName.trim();
+    const branchCode = newBranchCode.trim().toUpperCase();
+
+    setCreateBranchError(null);
+    setCreateBranchSuccess(null);
+
+    if (!branchName || !branchCode) {
+      setCreateBranchError("Branch name and code are required.");
+      return;
+    }
+
+    if (!/^[A-Z0-9-]{2,20}$/.test(branchCode)) {
+      setCreateBranchError("Branch code must be 2-20 characters and use only A-Z, 0-9, or '-'.");
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      setCreateBranchError("No auth token found. Please log in again.");
+      return;
+    }
+
+    setIsCreatingBranch(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/branches`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          branch_name: branchName,
+          branch_code: branchCode,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as Record<string, string>;
+      if (!response.ok) {
+        setCreateBranchError(payload.message || payload.error || "Failed to create branch.");
+        return;
+      }
+
+      setCreateBranchSuccess(payload.message || "Branch created successfully.");
+      setIsCreateBranchOpen(false);
+      setNewBranchName("");
+      setNewBranchCode("");
+      setRefreshVersion((value) => value + 1);
+    } catch {
+      setCreateBranchError("Network error while creating branch.");
+    } finally {
+      setIsCreatingBranch(false);
+    }
+  };
 
   const filteredBranches = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -408,18 +545,31 @@ export default function AdminBranchesPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setRefreshVersion((value) => value + 1)}
-            className="h-11 px-4 rounded-2xl text-sm font-bold text-white transition-opacity hover:opacity-90 flex items-center gap-2"
-            style={{
-              background: "linear-gradient(180deg, #2449ff 0%, #1133f2 100%)",
-              border: "1px solid rgba(183,205,255,0.28)",
-              boxShadow: "0 12px 24px rgba(2,24,95,0.28)",
-            }}
-          >
-            <RefreshCw size={15} /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreateBranchOpen(true)}
+              className="h-11 px-4 rounded-2xl text-sm font-bold text-[#062d8c] transition-opacity hover:opacity-90"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(235,242,255,0.96) 100%)",
+                border: "1px solid rgba(183,205,255,0.8)",
+              }}
+            >
+              Create Branch
+            </button>
+            <button
+              type="button"
+              onClick={() => setRefreshVersion((value) => value + 1)}
+              className="h-11 px-4 rounded-2xl text-sm font-bold text-white transition-opacity hover:opacity-90 flex items-center gap-2"
+              style={{
+                background: "linear-gradient(180deg, #2449ff 0%, #1133f2 100%)",
+                border: "1px solid rgba(183,205,255,0.28)",
+                boxShadow: "0 12px 24px rgba(2,24,95,0.28)",
+              }}
+            >
+              <RefreshCw size={15} /> Refresh
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -432,6 +582,19 @@ export default function AdminBranchesPage() {
             }}
           >
             {error}
+          </div>
+        )}
+
+        {createBranchSuccess && (
+          <div
+            className="rounded-xl px-4 py-3 text-sm font-medium"
+            style={{
+              background: "rgba(0,168,61,0.2)",
+              color: "#e9fff1",
+              border: "1px solid rgba(114,224,155,0.55)",
+            }}
+          >
+            {createBranchSuccess}
           </div>
         )}
 
@@ -716,6 +879,67 @@ export default function AdminBranchesPage() {
 
         <AdminFooter lastSync={lastSync} />
       </div>
+
+      {isCreateBranchOpen ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-[#d5e1ff] bg-white p-5 shadow-[0_26px_70px_rgba(2,23,77,0.4)]">
+            <p className="text-lg font-black text-[#062d8c]">Create Branch</p>
+            <p className="mt-1 text-xs text-slate-500">Add a new branch to the network.</p>
+
+            <div className="mt-4 space-y-3">
+              {createBranchError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {createBranchError}
+                </div>
+              ) : null}
+
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Branch Name</label>
+                <input
+                  type="text"
+                  value={newBranchName}
+                  onChange={(event) => setNewBranchName(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  placeholder="e.g., Concepcion Branch"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Branch Code</label>
+                <input
+                  type="text"
+                  value={newBranchCode}
+                  onChange={(event) => setNewBranchCode(event.target.value.toUpperCase())}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#062d8c]"
+                  placeholder="e.g., BR-004"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreateBranchOpen(false);
+                  setCreateBranchError(null);
+                  setNewBranchName("");
+                  setNewBranchCode("");
+                }}
+                className="rounded-xl border border-[#b9ccff] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#35539f]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={createBranch}
+                disabled={isCreatingBranch}
+                className="rounded-xl bg-gradient-to-r from-[#0e3ca8] to-[#2a63e8] px-4 py-2 text-xs font-black uppercase tracking-[0.08em] text-white disabled:opacity-70"
+              >
+                {isCreatingBranch ? "Creating..." : "Create Branch"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

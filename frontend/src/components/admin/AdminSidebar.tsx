@@ -30,6 +30,8 @@ const ROUTE_MAP: Record<string, string> = {
   Overview: "/admin",
   "Audit Sheet": "/admin/audit-sheet",
   Inventory: "/admin/inventory",
+  "View Inventory": "/admin/inventory",
+  "Stock Transfer": "/admin/stock-transfer",
   "Sales Reports": "/admin/sales-reports",
   Branches: "/admin/branches",
   Products: "/admin/products",
@@ -206,7 +208,10 @@ export default function AdminSidebar({
 
   const [prevActiveItem, setPrevActiveItem] = useState(activeItem);
   const [dashboardExpanded, setDashboardExpanded] = useState(
-    ["Dashboard", "Overview", "Inventory", "Products"].includes(activeItem),
+    ["Dashboard", "Overview", "Products"].includes(activeItem),
+  );
+  const [inventoryExpanded, setInventoryExpanded] = useState(
+    ["Inventory", "View Inventory", "Stock Transfer"].includes(activeItem),
   );
   const [orderingExpanded, setOrderingExpanded] = useState(
     ["Ordering", "PO List", "New Purchase Order", "Receive Delivery"].includes(
@@ -217,7 +222,10 @@ export default function AdminSidebar({
   if (activeItem !== prevActiveItem) {
     setPrevActiveItem(activeItem);
     setDashboardExpanded(
-      ["Dashboard", "Overview", "Inventory", "Products"].includes(activeItem),
+      ["Dashboard", "Overview", "Products"].includes(activeItem),
+    );
+    setInventoryExpanded(
+      ["Inventory", "View Inventory", "Stock Transfer"].includes(activeItem),
     );
     setOrderingExpanded(
       [
@@ -366,7 +374,7 @@ export default function AdminSidebar({
 
             {dashboardExpanded && (
               <div className="flex flex-col py-2">
-                {["Overview", "Inventory", "Products"].map((sub) => (
+                {["Overview", "Products"].map((sub) => (
                   <button
                     key={sub}
                     onClick={() => handleNav(sub)}
@@ -447,18 +455,126 @@ export default function AdminSidebar({
             onClick={() => handleNav("Users")}
           />
 
-          {/* Inventory */}
-          <SidebarItem
-            label="Inventory"
-            icon={
-              <Package
-                size={14}
-                color={activeItem === "Inventory" ? "#CB3CFF" : "#D6D6D6"}
-              />
-            }
-            active={activeItem === "Inventory"}
-            onClick={() => handleNav("Inventory")}
-          />
+          {/* Inventory (expandable) */}
+          <div className="flex flex-col gap-1 py-1">
+            <div
+              className="flex items-center w-full h-10.5 rounded-[7px] transition-colors"
+              style={{
+                background:
+                  activeItem === "Inventory"
+                    ? "rgba(3,53,175,0.6)"
+                    : "transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (activeItem !== "Inventory")
+                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+              }}
+              onMouseLeave={(e) => {
+                if (activeItem !== "Inventory")
+                  e.currentTarget.style.background = "transparent";
+              }}
+            >
+              <button
+                onClick={() => handleNav("Inventory")}
+                className="flex items-center gap-5 flex-1 px-3.5 h-full rounded-l-[7px]"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                <span className="shrink-0 flex items-center justify-center w-3.5 h-3.5">
+                  <Package
+                    size={14}
+                    color={activeItem === "Inventory" ? "#CB3CFF" : "#D6D6D6"}
+                  />
+                </span>
+                <span
+                  className="text-sm leading-[1.2]"
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: 500,
+                    color: activeItem === "Inventory" ? "#CB3CFF" : "#D6D6D6",
+                  }}
+                >
+                  Inventory
+                </span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInventoryExpanded((p) => !p);
+                }}
+                className="shrink-0 px-3.5 h-full flex items-center rounded-r-[7px] opacity-80"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                {inventoryExpanded ? (
+                  <ChevronDown
+                    size={14}
+                    color={activeItem === "Inventory" ? "#CB3CFF" : "#D6D6D6"}
+                  />
+                ) : (
+                  <ChevronRight
+                    size={14}
+                    color={activeItem === "Inventory" ? "#CB3CFF" : "#D6D6D6"}
+                  />
+                )}
+              </button>
+            </div>
+
+            {inventoryExpanded && (
+              <div className="flex flex-col py-2">
+                {["View Inventory", "Stock Transfer"].map((sub) => (
+                  <button
+                    key={sub}
+                    onClick={() => handleNav(sub)}
+                    className="flex items-center w-full h-10.5 py-2 rounded-[7px] px-3.5 transition-colors"
+                    style={{
+                      background:
+                        activeItem === sub
+                          ? "rgba(255,255,255,0.08)"
+                          : "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (activeItem !== sub)
+                        (
+                          e.currentTarget as HTMLButtonElement
+                        ).style.background = "rgba(255,255,255,0.05)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeItem !== sub)
+                        (
+                          e.currentTarget as HTMLButtonElement
+                        ).style.background = "transparent";
+                    }}
+                  >
+                    <span
+                      className="text-sm leading-[1.2] whitespace-nowrap"
+                      style={{
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: 500,
+                        color: activeItem === sub ? "#CB3CFF" : "#D6D6D6",
+                      }}
+                    >
+                      {sub}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Audit Sheet */}
           <SidebarItem

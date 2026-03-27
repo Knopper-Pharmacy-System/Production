@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Calendar,
   ChevronDown,
+  Download,
+  Printer,
   RefreshCw,
   CreditCard,
   Wallet,
@@ -9,6 +12,8 @@ import {
   Receipt,
 } from "lucide-react";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -93,6 +98,122 @@ type ShiftPerformanceRow = {
   grossRevenue: number;
 };
 
+type FilterBranch = {
+  branch_id: number;
+  branch_name: string;
+  branch_code: string;
+};
+
+type FilterCashier = {
+  user_id: number;
+  full_name: string;
+};
+
+type SalesComparisonSlice = {
+  transactions: number;
+  gross: number;
+  refunds: number;
+  net: number;
+};
+
+type ExtraTopProduct = {
+  product_id: number;
+  product_name: string;
+  category: string;
+  units_sold: number;
+  net_sales: number;
+};
+
+type ExtraTopCategory = {
+  category: string;
+  net_sales: number;
+  share_percent: number;
+};
+
+type ExtraRefundReason = {
+  reason: string;
+  count: number;
+  amount: number;
+};
+
+type ExtraDiscountByCashier = {
+  cashier: string;
+  discounts: number;
+  transactions: number;
+};
+
+type ExtraReconciliationRow = {
+  shift_id: number;
+  cashier: string;
+  status: string;
+  expected_cash: number | null;
+  actual_cash: number | null;
+  discrepancy: number | null;
+  cash_sales: number;
+  non_cash_sales: number;
+};
+
+type ExtraAlert = {
+  type: "warning" | "info";
+  message: string;
+};
+
+type SalesDashboardExtrasResponse = {
+  filters: {
+    branch_id: number | null;
+    cashier_id: number | null;
+    date: string;
+  };
+  comparison: {
+    today: SalesComparisonSlice;
+    yesterday: SalesComparisonSlice;
+    this_week: SalesComparisonSlice;
+    last_week: SalesComparisonSlice;
+  };
+  hourly_sales: Array<{
+    hour: number;
+    label: string;
+    transactions: number;
+    gross: number;
+  }>;
+  top_products: ExtraTopProduct[];
+  top_categories: ExtraTopCategory[];
+  refund_analytics: {
+    refund_count: number;
+    refund_amount: number;
+    void_count: number;
+    refund_by_reason: ExtraRefundReason[];
+    discount_by_cashier: ExtraDiscountByCashier[];
+  };
+  profit_view: {
+    net_sales: number;
+    estimated_cogs: number;
+    estimated_gross_profit: number;
+  };
+  reconciliation: ExtraReconciliationRow[];
+  alerts: ExtraAlert[];
+};
+
+type TransactionRow = {
+  sale_id: number;
+  sale_time: string;
+  cashier: string;
+  payment_method: string;
+  customer_type: string;
+  total_amount: number;
+  discount_total: number;
+  refunded_amount: number;
+  is_voided: boolean;
+};
+
+type TransactionsResponse = {
+  page: number;
+  page_size: number;
+  total_records: number;
+  total_pages: number;
+  transactions: TransactionRow[];
+};
+
 const PROD_API_BASE_URL = "https://web-production-2c7737.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
@@ -141,6 +262,13 @@ const safeNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const changePercent = (current: number, previous: number) => {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+};
+
+const isAdminRole = () => (localStorage.getItem("user_role") || "").toLowerCase() === "admin";
+
 export default function AdminSalesReportPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -148,9 +276,16 @@ export default function AdminSalesReportPage() {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [selectedDate, setSelectedDate] = useState(toIsoDate(new Date()));
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>("all");
+  const [selectedCashierId, setSelectedCashierId] = useState<string>("all");
+  const [transactionPaymentFilter, setTransactionPaymentFilter] = useState<string>("ALL");
+  const [transactionSearch, setTransactionSearch] = useState("");
+  const [transactionPage, setTransactionPage] = useState(1);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingShift, setIsLoadingShift] = useState(false);
+  const [isLoadingExtras, setIsLoadingExtras] = useState(false);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [lastSync, setLastSync] = useState<Date>(new Date());
@@ -160,6 +295,10 @@ export default function AdminSalesReportPage() {
   const [shiftPerformance, setShiftPerformance] = useState<ShiftPerformanceRow[]>([]);
   const [selectedShiftReport, setSelectedShiftReport] =
     useState<ShiftReportResponse | null>(null);
+  const [reportBranches, setReportBranches] = useState<FilterBranch[]>([]);
+  const [reportCashiers, setReportCashiers] = useState<FilterCashier[]>([]);
+  const [salesExtras, setSalesExtras] = useState<SalesDashboardExtrasResponse | null>(null);
+  const [transactionsData, setTransactionsData] = useState<TransactionsResponse | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
@@ -175,6 +314,42 @@ export default function AdminSalesReportPage() {
       window.removeEventListener("offline", handleStatus);
     };
   }, []);
+
+  useEffect(() => {
+    const loadFilters = async () => {
+      const token = getToken();
+      if (!token) return;
+
+      const params = new URLSearchParams();
+      if (selectedBranchId !== "all") {
+        params.set("branch_id", selectedBranchId);
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/pos/report-filters?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          branches?: FilterBranch[];
+          cashiers?: FilterCashier[];
+        };
+
+        if (!response.ok) return;
+
+        setReportBranches(Array.isArray(payload.branches) ? payload.branches : []);
+        setReportCashiers(Array.isArray(payload.cashiers) ? payload.cashiers : []);
+
+        if (selectedBranchId === "all" && !isAdminRole() && payload.branches && payload.branches.length > 0) {
+          setSelectedBranchId(String(payload.branches[0].branch_id));
+        }
+      } catch {
+        // Silent fallback keeps current page behavior.
+      }
+    };
+
+    void loadFilters();
+  }, [selectedBranchId]);
 
   useEffect(() => {
     const loadSalesDashboard = async () => {
@@ -196,17 +371,21 @@ export default function AdminSalesReportPage() {
           Authorization: `Bearer ${token}`,
         };
 
+        const query = new URLSearchParams({ date: selectedDate });
+        if (selectedBranchId !== "all") query.set("branch_id", selectedBranchId);
+        if (selectedCashierId !== "all") query.set("cashier_id", selectedCashierId);
+
         const [dailyResponse, shiftsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/pos/daily-sales?date=${selectedDate}`, {
+          fetch(`${API_BASE_URL}/pos/daily-sales?${query.toString()}`, {
             headers: authHeaders,
           }),
-          fetch(`${API_BASE_URL}/pos/shift-history`, {
+          fetch(`${API_BASE_URL}/pos/shift-history${selectedBranchId !== "all" ? `?branch_id=${selectedBranchId}` : ""}`, {
             headers: authHeaders,
           }),
         ]);
 
-        const dailyData = await dailyResponse.json();
-        const shiftsData = await shiftsResponse.json();
+        const dailyData = await dailyResponse.json().catch(() => ({}));
+        const shiftsData = await shiftsResponse.json().catch(() => ({}));
 
         if (!dailyResponse.ok) {
           setError(dailyData.message || dailyData.error || "Failed to load daily sales report.");
@@ -318,6 +497,87 @@ export default function AdminSalesReportPage() {
   }, [refreshVersion, selectedDate, selectedShiftId]);
 
   useEffect(() => {
+    const loadExtras = async () => {
+      setIsLoadingExtras(true);
+      try {
+        const token = getToken();
+        if (!token) {
+          setSalesExtras(null);
+          return;
+        }
+
+        const query = new URLSearchParams({ date: selectedDate });
+        if (selectedBranchId !== "all") query.set("branch_id", selectedBranchId);
+        if (selectedCashierId !== "all") query.set("cashier_id", selectedCashierId);
+
+        const response = await fetch(`${API_BASE_URL}/pos/sales-dashboard-extras?${query.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = (await response.json().catch(() => null)) as SalesDashboardExtrasResponse | null;
+        if (!response.ok || !payload) {
+          setSalesExtras(null);
+          return;
+        }
+        setSalesExtras(payload);
+      } catch {
+        setSalesExtras(null);
+      } finally {
+        setIsLoadingExtras(false);
+      }
+    };
+
+    void loadExtras();
+  }, [refreshVersion, selectedDate, selectedBranchId, selectedCashierId]);
+
+  useEffect(() => {
+    const loadTransactions = async () => {
+      setIsLoadingTransactions(true);
+      try {
+        const token = getToken();
+        if (!token) {
+          setTransactionsData(null);
+          return;
+        }
+
+        const query = new URLSearchParams({
+          date: selectedDate,
+          page: String(transactionPage),
+          page_size: "15",
+          payment_method: transactionPaymentFilter,
+          search: transactionSearch,
+        });
+        if (selectedBranchId !== "all") query.set("branch_id", selectedBranchId);
+        if (selectedCashierId !== "all") query.set("cashier_id", selectedCashierId);
+
+        const response = await fetch(`${API_BASE_URL}/pos/transactions?${query.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const payload = (await response.json().catch(() => null)) as TransactionsResponse | null;
+        if (!response.ok || !payload) {
+          setTransactionsData(null);
+          return;
+        }
+        setTransactionsData(payload);
+      } catch {
+        setTransactionsData(null);
+      } finally {
+        setIsLoadingTransactions(false);
+      }
+    };
+
+    void loadTransactions();
+  }, [
+    selectedDate,
+    selectedBranchId,
+    selectedCashierId,
+    transactionPage,
+    transactionSearch,
+    transactionPaymentFilter,
+    refreshVersion,
+  ]);
+
+  useEffect(() => {
     const loadShiftReport = async () => {
       if (!selectedShiftId) {
         setSelectedShiftReport(null);
@@ -369,6 +629,54 @@ export default function AdminSalesReportPage() {
   }, [dailySales]);
 
   const paymentTotal = paymentBreakdown.reduce((sum, item) => sum + item.value, 0);
+
+  const comparison = salesExtras?.comparison;
+  const hourlySales = salesExtras?.hourly_sales || [];
+  const topProducts = salesExtras?.top_products || [];
+  const topCategories = salesExtras?.top_categories || [];
+  const refundAnalytics = salesExtras?.refund_analytics;
+  const profitView = salesExtras?.profit_view;
+  const reconciliation = salesExtras?.reconciliation || [];
+  const alerts = salesExtras?.alerts || [];
+
+  const todayNetChange = comparison
+    ? changePercent(safeNumber(comparison.today.net), safeNumber(comparison.yesterday.net))
+    : 0;
+  const weekNetChange = comparison
+    ? changePercent(safeNumber(comparison.this_week.net), safeNumber(comparison.last_week.net))
+    : 0;
+
+  const exportCsv = (type: "summary" | "transactions") => {
+    const token = getToken();
+    if (!token) return;
+
+    const query = new URLSearchParams({ date: selectedDate });
+    if (selectedBranchId !== "all") query.set("branch_id", selectedBranchId);
+
+    const path =
+      type === "summary"
+        ? `${API_BASE_URL}/pos/export/daily-summary.csv?${query.toString()}`
+        : `${API_BASE_URL}/pos/export/transactions.csv?${query.toString()}`;
+
+    fetch(path, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Export failed");
+        const blob = await response.blob();
+        const href = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = href;
+        link.download = type === "summary" ? `daily-summary-${selectedDate}.csv` : `transactions-${selectedDate}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(href);
+      })
+      .catch(() => {
+        setError("Failed to export CSV file.");
+      });
+  };
 
   return (
     <div
@@ -462,6 +770,109 @@ export default function AdminSalesReportPage() {
             >
               <RefreshCw size={15} /> Refresh
             </button>
+            <button
+              type="button"
+              onClick={() => exportCsv("summary")}
+              className="h-11 px-4 rounded-2xl text-sm font-bold text-[#062d8c] transition-opacity hover:opacity-90 flex items-center gap-2"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(235,242,255,0.96) 100%)",
+                border: "1px solid rgba(183,205,255,0.8)",
+              }}
+            >
+              <Download size={14} /> Export Summary CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => exportCsv("transactions")}
+              className="h-11 px-4 rounded-2xl text-sm font-bold text-[#062d8c] transition-opacity hover:opacity-90 flex items-center gap-2"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(235,242,255,0.96) 100%)",
+                border: "1px solid rgba(183,205,255,0.8)",
+              }}
+            >
+              <Download size={14} /> Export Transactions CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="h-11 px-4 rounded-2xl text-sm font-bold text-[#062d8c] transition-opacity hover:opacity-90 flex items-center gap-2"
+              style={{
+                background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(235,242,255,0.96) 100%)",
+                border: "1px solid rgba(183,205,255,0.8)",
+              }}
+            >
+              <Printer size={14} /> Print / PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-xl p-4" style={TABLE_CARD_STYLE}>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Branch</p>
+              <select
+                value={selectedBranchId}
+                onChange={(event) => {
+                  setSelectedBranchId(event.target.value);
+                  setTransactionPage(1);
+                }}
+                className="h-10 w-full rounded-xl border border-[#cfdaf7] px-3 text-sm font-semibold text-[#103182] bg-white"
+              >
+                {isAdminRole() ? <option value="all">All Branches</option> : null}
+                {reportBranches.map((branch) => (
+                  <option key={branch.branch_id} value={String(branch.branch_id)}>
+                    {branch.branch_name} ({branch.branch_code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Cashier</p>
+              <select
+                value={selectedCashierId}
+                onChange={(event) => {
+                  setSelectedCashierId(event.target.value);
+                  setTransactionPage(1);
+                }}
+                className="h-10 w-full rounded-xl border border-[#cfdaf7] px-3 text-sm font-semibold text-[#103182] bg-white"
+              >
+                <option value="all">All Cashiers</option>
+                {reportCashiers.map((cashier) => (
+                  <option key={cashier.user_id} value={String(cashier.user_id)}>
+                    {cashier.full_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Payment</p>
+              <select
+                value={transactionPaymentFilter}
+                onChange={(event) => {
+                  setTransactionPaymentFilter(event.target.value);
+                  setTransactionPage(1);
+                }}
+                className="h-10 w-full rounded-xl border border-[#cfdaf7] px-3 text-sm font-semibold text-[#103182] bg-white"
+              >
+                <option value="ALL">All Payments</option>
+                <option value="CASH">Cash</option>
+                <option value="GCASH">GCash</option>
+                <option value="CARD">Card</option>
+              </select>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Receipt / Cashier Search</p>
+              <input
+                type="text"
+                value={transactionSearch}
+                onChange={(event) => {
+                  setTransactionSearch(event.target.value);
+                  setTransactionPage(1);
+                }}
+                placeholder="e.g., 1042 or Maria"
+                className="h-10 w-full rounded-xl border border-[#cfdaf7] px-3 text-sm font-semibold text-[#103182] bg-white outline-none"
+              />
+            </div>
           </div>
         </div>
 
@@ -477,6 +888,91 @@ export default function AdminSalesReportPage() {
             {error}
           </div>
         )}
+
+        {alerts.length > 0 && (
+          <div className="rounded-xl p-4" style={TABLE_CARD_STYLE}>
+            <p className="text-sm font-bold text-[#062d8c] mb-2">KPI Alerts</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {alerts.map((item, index) => (
+                <div
+                  key={`${item.message}-${index}`}
+                  className="rounded-lg px-3 py-2 text-sm font-semibold flex items-start gap-2"
+                  style={{
+                    background: item.type === "warning" ? "rgba(255,195,0,0.14)" : "rgba(17,51,242,0.12)",
+                    color: item.type === "warning" ? "#7d5a00" : "#103182",
+                    border: "1px solid rgba(112,136,214,0.3)",
+                  }}
+                >
+                  <AlertTriangle size={14} className="mt-0.5" /> {item.message}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="rounded-xl p-4" style={TABLE_CARD_STYLE}>
+            <p className="text-sm font-bold text-[#062d8c]">Today vs Yesterday</p>
+            <p className="text-xs text-slate-500 mb-3">Performance change for selected filters</p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Net Sales Change</p>
+                <p className="font-black text-lg" style={{ color: todayNetChange >= 0 ? "#00a83d" : "#c62828" }}>
+                  {isLoadingExtras ? "-" : `${todayNetChange >= 0 ? "+" : ""}${todayNetChange.toFixed(1)}%`}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Transactions Change</p>
+                <p className="font-black text-lg" style={{ color: "#1536ef" }}>
+                  {isLoadingExtras || !comparison
+                    ? "-"
+                    : `${comparison.today.transactions - comparison.yesterday.transactions >= 0 ? "+" : ""}${comparison.today.transactions - comparison.yesterday.transactions}`}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#f7f9ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Today Net</p>
+                <p className="font-bold text-[#062d8c]">
+                  {comparison ? peso(comparison.today.net) : "-"}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#f7f9ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Yesterday Net</p>
+                <p className="font-bold text-[#062d8c]">
+                  {comparison ? peso(comparison.yesterday.net) : "-"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl p-4" style={TABLE_CARD_STYLE}>
+            <p className="text-sm font-bold text-[#062d8c]">This Week vs Last Week</p>
+            <p className="text-xs text-slate-500 mb-3">Rolling 7-day comparison</p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Net Sales Change</p>
+                <p className="font-black text-lg" style={{ color: weekNetChange >= 0 ? "#00a83d" : "#c62828" }}>
+                  {isLoadingExtras ? "-" : `${weekNetChange >= 0 ? "+" : ""}${weekNetChange.toFixed(1)}%`}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Transactions Change</p>
+                <p className="font-black text-lg text-[#1536ef]">
+                  {isLoadingExtras || !comparison
+                    ? "-"
+                    : `${comparison.this_week.transactions - comparison.last_week.transactions >= 0 ? "+" : ""}${comparison.this_week.transactions - comparison.last_week.transactions}`}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#f7f9ff] px-3 py-2">
+                <p className="text-xs text-slate-500">This Week Net</p>
+                <p className="font-bold text-[#062d8c]">{comparison ? peso(comparison.this_week.net) : "-"}</p>
+              </div>
+              <div className="rounded-lg bg-[#f7f9ff] px-3 py-2">
+                <p className="text-xs text-slate-500">Last Week Net</p>
+                <p className="font-bold text-[#062d8c]">{comparison ? peso(comparison.last_week.net) : "-"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="rounded-[28px] p-5 sm:p-6" style={PANEL_CARD_STYLE}>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
@@ -597,6 +1093,85 @@ export default function AdminSalesReportPage() {
                 )}
               </div>
             </div>
+
+            <div className="rounded-xl p-4" style={TABLE_CARD_STYLE}>
+              <p className="text-sm font-bold text-[#062d8c] mb-1">Hourly Sales</p>
+              <p className="text-xs text-slate-500 mb-3">Intraday gross revenue and transactions</p>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={hourlySales}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#d8e2ff" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#6b7bb8" />
+                    <YAxis tick={{ fontSize: 10 }} stroke="#6b7bb8" />
+                    <Tooltip
+                      formatter={(value: unknown, name: unknown) =>
+                        String(name) === "gross" ? [peso(safeNumber(value)), "Gross"] : [safeNumber(value), "Transactions"]
+                      }
+                    />
+                    <Bar dataKey="gross" fill="#1d4ed8" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-5">
+            <div className="xl:col-span-2 rounded-xl overflow-hidden" style={TABLE_CARD_STYLE}>
+              <div className="px-4 py-3 border-b border-[#dbe3f7]">
+                <p className="text-sm font-bold text-[#062d8c]">Top Selling Products</p>
+                <p className="text-xs text-slate-500">Top 10 ranked by net sales</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] text-sm">
+                  <thead>
+                    <tr className="bg-[#e8eefb] text-[#062d8c]">
+                      <th className="px-3 py-2 text-left text-xs font-bold">Product</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold">Category</th>
+                      <th className="px-3 py-2 text-right text-xs font-bold">Units</th>
+                      <th className="px-3 py-2 text-right text-xs font-bold">Net Sales</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-8 text-center text-slate-500 text-sm">
+                          No product sales data for selected filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      topProducts.map((item, index) => (
+                        <tr key={item.product_id} style={{ background: index % 2 === 0 ? "#f7f9ff" : "#edf2ff" }}>
+                          <td className="px-3 py-2 text-[#001d63] font-semibold">{item.product_name}</td>
+                          <td className="px-3 py-2 text-[#001d63]">{item.category}</td>
+                          <td className="px-3 py-2 text-right text-[#001d63]">{item.units_sold.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-bold text-[#0f38c9]">{peso(item.net_sales)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={TABLE_CARD_STYLE}>
+              <p className="text-sm font-bold text-[#062d8c] mb-1">Category Contribution</p>
+              <p className="text-xs text-slate-500 mb-3">Share of net sales by category</p>
+              <div className="space-y-2">
+                {topCategories.length === 0 ? (
+                  <p className="text-xs text-slate-500">No category data yet.</p>
+                ) : (
+                  topCategories.map((category) => (
+                    <div key={category.category} className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-[#103182]">
+                        <span>{category.category}</span>
+                        <span>{category.share_percent.toFixed(1)}%</span>
+                      </div>
+                      <div className="mt-1 text-sm font-bold text-[#062d8c]">{peso(category.net_sales)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -705,6 +1280,214 @@ export default function AdminSalesReportPage() {
                 ) : (
                   <p className="text-slate-500">Pick a shift to view its detailed report.</p>
                 )}
+              </div>
+            </div>
+
+            <div className="rounded-xl overflow-hidden" style={TABLE_CARD_STYLE}>
+              <div className="px-4 py-3 border-b border-[#dbe3f7]">
+                <p className="text-sm font-bold text-[#062d8c]">Refund and Void Analytics</p>
+                <p className="text-xs text-slate-500">Refund reasons and discount concentration</p>
+              </div>
+              <div className="p-4 space-y-3 text-sm">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                    <p className="text-xs text-slate-500">Refund Count</p>
+                    <p className="font-black text-[#0f38c9]">{refundAnalytics?.refund_count ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                    <p className="text-xs text-slate-500">Refund Amount</p>
+                    <p className="font-black text-[#c62828]">{peso(refundAnalytics?.refund_amount ?? 0)}</p>
+                  </div>
+                  <div className="rounded-lg bg-[#eef3ff] px-3 py-2">
+                    <p className="text-xs text-slate-500">Voided Receipts</p>
+                    <p className="font-black text-[#7d5a00]">{refundAnalytics?.void_count ?? 0}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-[#f7f9ff] px-3 py-2">
+                  <p className="text-xs font-bold uppercase text-slate-500 mb-2">Refund Reasons</p>
+                  {(refundAnalytics?.refund_by_reason || []).length === 0 ? (
+                    <p className="text-xs text-slate-500">No refunds posted for this date.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {(refundAnalytics?.refund_by_reason || []).map((item) => (
+                        <div key={item.reason} className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-700">{item.reason}</span>
+                          <span className="font-bold text-[#0b2f9f]">
+                            {item.count} • {peso(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg bg-[#f7f9ff] px-3 py-2">
+                  <p className="text-xs font-bold uppercase text-slate-500 mb-2">Discounts by Cashier</p>
+                  {(refundAnalytics?.discount_by_cashier || []).length === 0 ? (
+                    <p className="text-xs text-slate-500">No discount data for this selection.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {(refundAnalytics?.discount_by_cashier || []).slice(0, 5).map((item) => (
+                        <div key={item.cashier} className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-700">{item.cashier}</span>
+                          <span className="font-bold text-[#0b2f9f]">
+                            {peso(item.discounts)} ({item.transactions} tx)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-xl px-4 py-3" style={TABLE_CARD_STYLE}>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Estimated Net Sales</p>
+              <p className="text-xl font-black text-[#0f38c9]">{peso(profitView?.net_sales ?? 0)}</p>
+            </div>
+            <div className="rounded-xl px-4 py-3" style={TABLE_CARD_STYLE}>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Estimated COGS</p>
+              <p className="text-xl font-black text-[#7d5a00]">{peso(profitView?.estimated_cogs ?? 0)}</p>
+            </div>
+            <div className="rounded-xl px-4 py-3" style={TABLE_CARD_STYLE}>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Estimated Gross Profit</p>
+              <p className="text-xl font-black text-[#00a83d]">{peso(profitView?.estimated_gross_profit ?? 0)}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-xl overflow-hidden" style={TABLE_CARD_STYLE}>
+            <div className="px-4 py-3 border-b border-[#dbe3f7]">
+              <p className="text-sm font-bold text-[#062d8c]">Payment Reconciliation by Shift</p>
+              <p className="text-xs text-slate-500">Expected vs actual cash and shift variance</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead>
+                  <tr className="bg-[#e8eefb] text-[#062d8c]">
+                    <th className="px-3 py-2 text-left text-xs font-bold">Shift</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Cashier</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Status</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Cash Sales</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Non-Cash</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Expected</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Actual</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Variance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliation.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-8 text-center text-slate-500 text-sm">
+                        No reconciliation rows available.
+                      </td>
+                    </tr>
+                  ) : (
+                    reconciliation.map((row, index) => (
+                      <tr key={row.shift_id} style={{ background: index % 2 === 0 ? "#f7f9ff" : "#edf2ff" }}>
+                        <td className="px-3 py-2 text-[#001d63] font-semibold">#{row.shift_id}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.cashier}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.status}</td>
+                        <td className="px-3 py-2 text-right text-[#001d63]">{peso(row.cash_sales)}</td>
+                        <td className="px-3 py-2 text-right text-[#001d63]">{peso(row.non_cash_sales)}</td>
+                        <td className="px-3 py-2 text-right text-[#001d63]">{row.expected_cash !== null ? peso(row.expected_cash) : "-"}</td>
+                        <td className="px-3 py-2 text-right text-[#001d63]">{row.actual_cash !== null ? peso(row.actual_cash) : "-"}</td>
+                        <td
+                          className="px-3 py-2 text-right font-bold"
+                          style={{ color: row.discrepancy !== null && row.discrepancy < 0 ? "#c62828" : "#0f38c9" }}
+                        >
+                          {row.discrepancy !== null ? peso(row.discrepancy) : "-"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-xl overflow-hidden" style={TABLE_CARD_STYLE}>
+            <div className="px-4 py-3 border-b border-[#dbe3f7] flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold text-[#062d8c]">Transaction Drilldown</p>
+                <p className="text-xs text-slate-500">Receipt-level data for audit and investigation</p>
+              </div>
+              <div className="text-xs font-semibold text-slate-500">
+                {transactionsData ? `${transactionsData.total_records} records` : "0 records"}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-sm">
+                <thead>
+                  <tr className="bg-[#e8eefb] text-[#062d8c]">
+                    <th className="px-3 py-2 text-left text-xs font-bold">Receipt</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Time</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Cashier</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Payment</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Type</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Total</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Discount</th>
+                    <th className="px-3 py-2 text-right text-xs font-bold">Refunded</th>
+                    <th className="px-3 py-2 text-left text-xs font-bold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoadingTransactions ? (
+                    <tr>
+                      <td colSpan={9} className="px-3 py-8 text-center text-slate-500 text-sm">
+                        Loading transactions...
+                      </td>
+                    </tr>
+                  ) : (transactionsData?.transactions || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-3 py-8 text-center text-slate-500 text-sm">
+                        No transactions for selected filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    (transactionsData?.transactions || []).map((row, index) => (
+                      <tr key={row.sale_id} style={{ background: index % 2 === 0 ? "#f7f9ff" : "#edf2ff" }}>
+                        <td className="px-3 py-2 text-[#001d63] font-semibold">#{row.sale_id}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.sale_time}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.cashier}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.payment_method}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.customer_type}</td>
+                        <td className="px-3 py-2 text-right font-bold text-[#0f38c9]">{peso(row.total_amount)}</td>
+                        <td className="px-3 py-2 text-right text-[#7d5a00]">{peso(row.discount_total)}</td>
+                        <td className="px-3 py-2 text-right text-[#c62828]">{peso(row.refunded_amount)}</td>
+                        <td className="px-3 py-2 text-[#001d63]">{row.is_voided ? "Voided" : "Valid"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="px-4 py-3 border-t border-[#dbe3f7] flex items-center justify-between">
+              <p className="text-xs text-slate-500">
+                Page {transactionsData?.page || 1} of {transactionsData?.total_pages || 1}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={(transactionsData?.page || 1) <= 1}
+                  onClick={() => setTransactionPage((page) => Math.max(1, page - 1))}
+                  className="h-9 px-3 rounded-xl text-xs font-bold disabled:opacity-40"
+                  style={{ background: "#efefef", color: "#0b0b0b", border: "1px solid #dad8d8" }}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={(transactionsData?.page || 1) >= (transactionsData?.total_pages || 1)}
+                  onClick={() => setTransactionPage((page) => page + 1)}
+                  className="h-9 px-3 rounded-xl text-xs font-bold disabled:opacity-40"
+                  style={{ background: "#efefef", color: "#0b0b0b", border: "1px solid #dad8d8" }}
+                >
+                  Next
+                </button>
               </div>
             </div>
           </div>

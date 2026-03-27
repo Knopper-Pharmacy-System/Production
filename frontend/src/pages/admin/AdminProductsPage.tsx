@@ -943,47 +943,7 @@ export default function AdminProductsPage() {
                     <td className="px-3 py-2 text-[#001d63]">{product.price.toFixed(2)}</td>
                     <td className="px-3 py-2 text-[#001d63]">{product.stock}</td>
                   </tr>
-                ) : filteredProducts.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="px-3 py-10 text-center text-slate-500"
-                    >
-                      No products found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProducts.map((product, index) => (
-                    <tr
-                      key={product.id}
-                      style={{
-                        background: index % 2 === 0 ? "#f7f9ff" : "#edf2ff",
-                      }}
-                    >
-                      <td className="px-3 py-2 text-[#001d63] font-semibold">
-                        {product.name}
-                      </td>
-                      <td className="px-3 py-2 text-[#001d63]">
-                        {product.productId}
-                      </td>
-                      <td className="px-3 py-2 text-[#001d63]">
-                        {product.category}
-                      </td>
-                      <td className="px-3 py-2 text-[#001d63] font-mono">
-                        {product.barcode}
-                      </td>
-                      <td className="px-3 py-2 text-[#001d63]">
-                        {product.location}
-                      </td>
-                      <td className="px-3 py-2 text-[#001d63]">
-                        {product.price.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-2 text-[#001d63]">
-                        {product.stock}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>

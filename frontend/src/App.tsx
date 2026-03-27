@@ -15,6 +15,7 @@ import AdminPurchaseOrderPage from "./pages/admin/AdminPurchaseOrderPage";
 import AdminPurchaseOrderListPage from "./pages/admin/AdminPurchaseOrderListPage";
 import AdminPurchaseOrderDetailPage from "./pages/admin/AdminPurchaseOrderDetailPage";
 import AdminReceiveDeliveryPage from "./pages/admin/AdminReceiveDeliveryPage";
+import AdminStockTransfersPage from "./pages/admin/AdminStockTransfersPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -118,6 +119,16 @@ function App() {
             <ProtectedRoute expectedRole="admin">
               <AdminInventoryPage />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/stock-transfer"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminStockTransfersPage />
+            </ProtectedRoute>
+          }
+        />
           }
         />
         <Route

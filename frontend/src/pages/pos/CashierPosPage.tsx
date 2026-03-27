@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Calendar,
@@ -50,7 +50,7 @@ const CATEGORIES = [
   { value: "", label: "All" },
   { value: "MEDICINE", label: "Medicine" },
   { value: "GROCERY", label: "Grocery" },
-  { value: "EQUIPMENT", label: "Medical Supplies" },
+  { value: "MEDICAL_SUPPLIES", label: "Medical Supplies" },
 ];
 
 const DISCOUNT_TYPES = [
@@ -61,9 +61,9 @@ const DISCOUNT_TYPES = [
 ];
 
 const DISCOUNT_RATES = [0, 0.20, 0.10, 0];
+const SENIOR_DISCOUNT_INDEX = 1;
 const ITEMS_PER_PAGE = 50;
 const INITIAL_SEQUENCE_NUMBER = 1;
-const INVENTORY_SYNC_INTERVAL_MS = 3 * 60 * 1000;
 const RETURN_REASONS = [
   "Wrong Item",
   "Damaged Product",
@@ -250,11 +250,25 @@ type ReadingSummary = {
 };
 
 type VoidMode = "single" | "all" | "selected";
+type ActionInputMode = "add-on" | "department" | "pickup";
 
 type VoidSelection = {
   selected: boolean;
   quantity: number;
   replacementProduct: string;
+};
+
+type SeniorDiscountDetails = {
+  idNumber: string;
+  name: string;
+  discountLimit: number | null;
+};
+
+type ReadingInputState = {
+  isOpen: boolean;
+  type: ReadingType;
+  cashCountInput: string;
+  error: string | null;
 };
 
 function CashierPosPage() {
@@ -308,6 +322,11 @@ function CashierPosPage() {
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
   const [isAuthorizingManager, setIsAuthorizingManager] = useState(false);
   const [managerError, setManagerError] = useState<string | null>(null);
+  const [isLiveVoidModalOpen, setIsLiveVoidModalOpen] = useState(false);
+  const [isLiveVoidSubmitting, setIsLiveVoidSubmitting] = useState(false);
+  const [liveVoidPin, setLiveVoidPin] = useState("");
+  const [liveVoidError, setLiveVoidError] = useState<string | null>(null);
+  const [liveVoidItem, setLiveVoidItem] = useState<CartItem | null>(null);
   const [pendingAction, setPendingAction] = useState<"discount" | "return" | "payment" | "price_override" | "cancel" | "void_previous" | null>(null);
   const [isKeybindHelpOpen, setIsKeybindHelpOpen] = useState(false);
   const [isClosingBalanceOpen, setIsClosingBalanceOpen] = useState(false);
@@ -317,6 +336,29 @@ function CashierPosPage() {
   const [lastTenderedAmount, setLastTenderedAmount] = useState(0);
   const [lastChangeAmount, setLastChangeAmount] = useState(0);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [actionInputModal, setActionInputModal] = useState<{
+    isOpen: boolean;
+    mode: ActionInputMode;
+    value: string;
+    error: string | null;
+  }>({
+    isOpen: false,
+    mode: "add-on",
+    value: "",
+    error: null,
+  });
+  const [readingInputState, setReadingInputState] = useState<ReadingInputState>({
+    isOpen: false,
+    type: "X",
+    cashCountInput: "0",
+    error: null,
+  });
+  const [isSeniorDiscountModalOpen, setIsSeniorDiscountModalOpen] = useState(false);
+  const [seniorCitizenIdNumber, setSeniorCitizenIdNumber] = useState("");
+  const [seniorCitizenName, setSeniorCitizenName] = useState("");
+  const [seniorDiscountLimitInput, setSeniorDiscountLimitInput] = useState("");
+  const [seniorDiscountError, setSeniorDiscountError] = useState<string | null>(null);
+  const [seniorDiscountDetails, setSeniorDiscountDetails] = useState<SeniorDiscountDetails | null>(null);
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [journalEntries, setJournalEntries] = useState<ElectronicJournalEntry[]>([]);
   const [isLoadingJournal, setIsLoadingJournal] = useState(false);
@@ -351,6 +393,7 @@ function CashierPosPage() {
   const [inventorySearch, setInventorySearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("MEDICINE");
   const [stockFilter, setStockFilter] = useState<StockFilter>("in-stock");
+  const [showBarcodeColumn, setShowBarcodeColumn] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [selectedInventoryIndex, setSelectedInventoryIndex] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -358,10 +401,15 @@ function CashierPosPage() {
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
   const lastAddToCartAtRef = useRef(0);
   const lastSelectItemAtRef = useRef<{ itemId: number; at: number } | null>(null);
-  const lastInventorySyncAtRef = useRef(0);
   const inventorySearchRef = useRef<HTMLInputElement | null>(null);
   const selectedItemRef = useRef<HTMLDivElement | null>(null);
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
+  const actionInputRef = useRef<HTMLInputElement | null>(null);
+  const readingCashInputRef = useRef<HTMLInputElement | null>(null);
+  const seniorIdInputRef = useRef<HTMLInputElement | null>(null);
+  const seniorNameInputRef = useRef<HTMLInputElement | null>(null);
+  const seniorLimitInputRef = useRef<HTMLInputElement | null>(null);
+  const seniorSubmitButtonRef = useRef<HTMLButtonElement | null>(null);
   const totalInventoryPages = Math.max(1, Math.ceil(totalInventoryCount / ITEMS_PER_PAGE));
   const hasPreviousInventoryPage = currentPage > 0;
   const hasNextInventoryPage = currentPage + 1 < totalInventoryPages;
@@ -393,6 +441,12 @@ function CashierPosPage() {
     setCurrentPage(0);
     setTotalInventoryCount(0);
     setShowInventoryModal(false);
+    setIsSeniorDiscountModalOpen(false);
+    setSeniorCitizenIdNumber("");
+    setSeniorCitizenName("");
+    setSeniorDiscountLimitInput("");
+    setSeniorDiscountError(null);
+    setSeniorDiscountDetails(null);
     localStorage.removeItem("pos_cartItems");
     localStorage.removeItem("pos_addOn");
     localStorage.removeItem("pos_discountTypeIndex");
@@ -633,17 +687,54 @@ function CashierPosPage() {
     await appendJournal("F3", "Subtotal Discount", "Manager PIN requested to apply subtotal discount.");
   }, [appendJournal, cartItems.length]);
 
+  const openActionInputModal = useCallback((mode: ActionInputMode, value: string) => {
+    setActionInputModal({
+      isOpen: true,
+      mode,
+      value,
+      error: null,
+    });
+    window.setTimeout(() => actionInputRef.current?.focus(), 0);
+  }, []);
+
   const handleAddOnShortcut = useCallback(async () => {
-    const rawValue = window.prompt("Enter add-on amount:", String(addOn));
-    if (rawValue === null) return;
-    const parsed = Number(rawValue);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      showToast("Invalid add-on amount.", "error");
+    openActionInputModal("add-on", String(addOn));
+  }, [addOn, openActionInputModal]);
+
+  const handleConfirmActionInputModal = useCallback(async () => {
+    const trimmed = actionInputModal.value.trim();
+
+    if (actionInputModal.mode === "department") {
+      if (!trimmed) {
+        setActionInputModal((prev) => ({ ...prev, error: "Department code is required." }));
+        return;
+      }
+      setActionInputModal((prev) => ({ ...prev, isOpen: false, error: null }));
+      showToast(`Open Department: ${trimmed}`, "info");
+      await appendJournal("POS", "Open Department", trimmed);
       return;
     }
-    setAddOn(parsed);
-    await appendJournal("F5", "Add-on Amount", `Set add-on to ${parsed.toFixed(2)}`);
-  }, [addOn, appendJournal]);
+
+    const numericValue = Number(trimmed);
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      setActionInputModal((prev) => ({
+        ...prev,
+        error: prev.mode === "pickup" ? "Invalid pickup amount." : "Invalid add-on amount.",
+      }));
+      return;
+    }
+
+    if (actionInputModal.mode === "pickup") {
+      setActionInputModal((prev) => ({ ...prev, isOpen: false, error: null }));
+      await appendJournal("POS", "Pick Up", `Pickup amount: ${numericValue.toFixed(2)}`);
+      showToast(`Pickup logged: PHP ${numericValue.toFixed(2)}`, "success");
+      return;
+    }
+
+    setAddOn(numericValue);
+    setActionInputModal((prev) => ({ ...prev, isOpen: false, error: null }));
+    await appendJournal("POS", "Add-on Amount", `Set add-on to ${numericValue.toFixed(2)}`);
+  }, [actionInputModal.mode, actionInputModal.value, appendJournal, showToast]);
 
   const handleLiveItemVoidShortcut = useCallback(async () => {
     if (cartItems.length === 0) {
@@ -652,12 +743,57 @@ function CashierPosPage() {
     }
 
     const lastItem = cartItems[cartItems.length - 1];
-    const confirm = window.confirm(`Void latest item: ${lastItem.description}?`);
-    if (!confirm) return;
+    setLiveVoidItem(lastItem);
+    setLiveVoidPin("");
+    setLiveVoidError(null);
+    setIsLiveVoidModalOpen(true);
+    await appendJournal("F6", "Live Item Void Requested", `Pending manager approval for ${lastItem.description}`);
+  }, [appendJournal, cartItems, showToast]);
 
-    setCartItems((prev) => prev.slice(0, -1));
-    await appendJournal("F6", "Live Item Void", `Voided ${lastItem.description}`);
-  }, [appendJournal, cartItems]);
+  const handleConfirmLiveVoid = useCallback(async () => {
+    if (!liveVoidItem) {
+      setLiveVoidError("No item selected for void.");
+      return;
+    }
+
+    if (!liveVoidPin.trim()) {
+      setLiveVoidError("Manager PIN is required.");
+      return;
+    }
+
+    setIsLiveVoidSubmitting(true);
+    setLiveVoidError(null);
+
+    try {
+      const approved = await verifyManagerPin(liveVoidPin.trim());
+      if (!approved) {
+        setLiveVoidError("Invalid manager PIN.");
+        return;
+      }
+
+      setCartItems((prev) => prev.filter((item) => item.id !== liveVoidItem.id));
+
+      // Close immediately after successful approval and cart update.
+      setIsLiveVoidModalOpen(false);
+      setLiveVoidItem(null);
+      setLiveVoidPin("");
+      setLiveVoidError(null);
+      window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+
+      void appendJournal(
+        "F6",
+        "Live Item Void",
+        `Voided ${liveVoidItem.description} (Qty: ${liveVoidItem.quantity}) with manager approval.`
+      );
+
+      showToast(`Voided ${liveVoidItem.description}.`, "success");
+    } catch (err) {
+      console.error("Live item void failed:", err);
+      setLiveVoidError("Unable to void item. Please try again.");
+    } finally {
+      setIsLiveVoidSubmitting(false);
+    }
+  }, [appendJournal, liveVoidItem, liveVoidPin, showToast]);
 
   const handleTransactionCancelShortcut = useCallback(async () => {
     if (cartItems.length === 0) {
@@ -700,25 +836,40 @@ function CashierPosPage() {
     const runningSubtotal = cartItems.reduce((sum, item) => sum + item.total, 0);
     const runningDiscount = runningSubtotal * DISCOUNT_RATES[discountTypeIndex];
     const runningAmountDue = runningSubtotal - runningDiscount + addOn;
-    const summary = await generateReadingSummary("X", runningAmountDue);
-    if (summary) {
-      showToast("X Reading generated.", "success");
-    }
-  }, [addOn, cartItems, discountTypeIndex, generateReadingSummary]);
+    setReadingInputState({
+      isOpen: true,
+      type: "X",
+      cashCountInput: runningAmountDue.toFixed(2),
+      error: null,
+    });
+    window.setTimeout(() => readingCashInputRef.current?.focus(), 0);
+  }, [addOn, cartItems, discountTypeIndex]);
 
   const handleZReadingShortcut = useCallback(async () => {
-    const cashInput = window.prompt("Enter final cash count:", "0");
-    if (cashInput === null) return;
-    const finalCash = Number(cashInput);
+    setReadingInputState({
+      isOpen: true,
+      type: "Z",
+      cashCountInput: "0",
+      error: null,
+    });
+    window.setTimeout(() => readingCashInputRef.current?.focus(), 0);
+  }, []);
+
+  const handleConfirmReadingInput = useCallback(async () => {
+    const finalCash = Number(readingInputState.cashCountInput);
     if (!Number.isFinite(finalCash) || finalCash < 0) {
-      showToast("Invalid final cash count.", "error");
+      setReadingInputState((prev) => ({ ...prev, error: "Cash count must be a valid non-negative number." }));
       return;
     }
 
-    const confirmed = window.confirm("Finalize Z Reading, close shift, and reset current transaction?");
-    if (!confirmed) return;
+    const readingType = readingInputState.type;
+    setReadingInputState((prev) => ({ ...prev, isOpen: false, error: null }));
+    await generateReadingSummary(readingType, finalCash);
 
-    await generateReadingSummary("Z", finalCash);
+    if (readingType === "X") {
+      showToast("X Reading generated.", "success");
+      return;
+    }
 
     if (shiftId) {
       await closeShiftWithBalance(shiftId, finalCash);
@@ -728,8 +879,8 @@ function CashierPosPage() {
 
     resetCurrentSaleState();
     setIsSignOffOpen(true);
-    await appendJournal("Z", "Z Reading Finalized", `Final Cash: ${finalCash.toFixed(2)}`);
-  }, [appendJournal, generateReadingSummary, resetCurrentSaleState, shiftId]);
+    await appendJournal("POS", "Z Reading Finalized", `Final Cash: ${finalCash.toFixed(2)}`);
+  }, [appendJournal, generateReadingSummary, readingInputState.cashCountInput, readingInputState.type, resetCurrentSaleState, shiftId, showToast]);
 
   const handleNoSaleShortcut = useCallback(async () => {
     showToast("No Sale triggered. Cash drawer opened.", "info");
@@ -737,23 +888,12 @@ function CashierPosPage() {
   }, [appendJournal]);
 
   const handleOpenDepartmentShortcut = useCallback(async () => {
-    const department = window.prompt("Enter department code:", "GENERAL");
-    if (department === null) return;
-    showToast(`Open Department: ${department}`, "info");
-    await appendJournal("O", "Open Department", department);
-  }, [appendJournal]);
+    openActionInputModal("department", "GENERAL");
+  }, [openActionInputModal]);
 
   const handlePickupShortcut = useCallback(async () => {
-    const amountInput = window.prompt("Enter pickup amount:", "0");
-    if (amountInput === null) return;
-    const amount = Number(amountInput);
-    if (!Number.isFinite(amount) || amount < 0) {
-      showToast("Invalid pickup amount.", "error");
-      return;
-    }
-    await appendJournal("P", "Pick Up", `Pickup amount: ${amount.toFixed(2)}`);
-    showToast(`Pickup logged: ₱${amount.toFixed(2)}`, "success");
-  }, [appendJournal]);
+    openActionInputModal("pickup", "0");
+  }, [openActionInputModal]);
 
   const handleReprintShortcut = useCallback(async () => {
     setIsReceiptConfirmOpen(true);
@@ -873,6 +1013,40 @@ function CashierPosPage() {
       setIsCheckingReceipt(false);
     }
   }, [currentBranchName, returnReceiptNo]);
+
+  const handleReturnReceiptToCart = useCallback(async () => {
+    if (!selectedCompletedTransaction) {
+      setReturnFlowError("Check or select a receipt first.");
+      return;
+    }
+
+    const now = Date.now();
+    const restoredItems: CartItem[] = selectedCompletedTransaction.cartItems.map((item, index) => ({
+      id: now + index + Math.random(),
+      description: item.description,
+      quantity: item.quantity,
+      price: item.price,
+      total: Number.isFinite(item.total) ? item.total : item.price * item.quantity,
+      inventoryId: item.inventoryId,
+    }));
+
+    if (restoredItems.length === 0) {
+      setReturnFlowError("No items found on the selected receipt.");
+      return;
+    }
+
+    setCartItems((prev) => [...prev, ...restoredItems]);
+    showToast(`Returned ${restoredItems.length} item(s) to cart from receipt #${selectedCompletedTransaction.receiptNo}.`, "success");
+    void appendJournal(
+      "F4",
+      "Return To Cart",
+      `Loaded ${restoredItems.length} item(s) from receipt #${selectedCompletedTransaction.receiptNo} back to current cart.`
+    );
+
+    setIsReturnsOpen(false);
+    resetReturnsState();
+    window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+  }, [appendJournal, resetReturnsState, selectedCompletedTransaction, showToast]);
 
   const handleConfirmVoidReturn = useCallback(async () => {
     if (!selectedCompletedTransaction) {
@@ -1054,20 +1228,25 @@ function CashierPosPage() {
     voidReason,
   ]);
 
-  const applyStockFilter = (items: InventoryItem[]) => {
+  const applyStockFilter = (items: any[]) => {
+    const getQty = (item: any) => Number(item.quantity ?? item.quantity_on_hand ?? 0);
+
     if (stockFilter === "all-stock") {
       return items;
     }
 
     if (stockFilter === "in-stock") {
-      return items.filter((item) => item.quantity > 0);
+      return items.filter((item) => getQty(item) > 0);
     }
 
     if (stockFilter === "low-stock") {
-      return items.filter((item) => item.quantity > 0 && item.quantity <= 10);
+      return items.filter((item) => {
+        const qty = getQty(item);
+        return qty > 0 && qty <= 10;
+      });
     }
 
-    return items.filter((item) => item.quantity <= 0);
+    return items.filter((item) => getQty(item) <= 0);
   };
 
   // Persist cart state to localStorage
@@ -1199,275 +1378,93 @@ function CashierPosPage() {
     }
   }, [showInventoryModal]);
 
-  // Load inventory on search or modal open
-  useEffect(() => {
-    if (!showInventoryModal) return;
+  const [inventoryCache, setInventoryCache] = useState<any[]>([]);
 
-    const loadInventory = async () => {
-      const isSearch = inventorySearch.trim();
+  // Refresh inventory cache whenever modal opens
+  useEffect(() => {
+    const loadFullInventory = async () => {
+      if (!showInventoryModal) return;
       setIsLoading(true);
 
       try {
-        let allItems: InventoryItem[] = [];
-
-        if (isSearch) {
-          // Search mode - always search local Dexie cache first for instant results
-          const searchTerm = inventorySearch.trim().toLowerCase();
-          let localItems = await db.inventory.filter(item => {
-            const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
-            const barcode = getInventoryBarcodeValue(item).toLowerCase();
-            return name.includes(searchTerm) || barcode.includes(searchTerm);
-          }).toArray();
-          if (selectedCategory) {
-            localItems = localItems.filter(item => matchesSelectedCategory(item.category, selectedCategory));
-          }
-          allItems = localItems.map(item => ({
-            id: item.id!,
-            name: getInventoryDisplayName(item),
-            description: item.product_name_official || "",
-            productId: item.product_id || item.productId,
-            barcode: getInventoryBarcodeValue(item),
-            expiry: item.expiry_date || item.expiry || null,
-            quantity: item.quantity_on_hand ?? item.quantity ?? 0,
-            price: item.price_regular || item.price || 0,
-            gondola: item.gondola_code || item.gondola || "—",
-            category: item.category,
-          }));
-
-          const initialSourceItems = allItems;
-          const initialPageStart = currentPage * ITEMS_PER_PAGE;
-          const initialPagedItems = initialSourceItems.slice(initialPageStart, initialPageStart + ITEMS_PER_PAGE);
-          setInventoryItems(initialPagedItems);
-          setTotalInventoryCount(initialSourceItems.length);
-          setSelectedInventoryIndex((previousIndex) => {
-            if (initialPagedItems.length === 0) return 0;
-            return Math.min(previousIndex, initialPagedItems.length - 1);
-          });
-          setIsLoading(false);
-
-          // Refresh from server and also update visible results immediately when available.
-          if (navigator.onLine) {
-            try {
-              const token = localStorage.getItem("access_token");
-              if (token) {
-                const res = await fetch(
-                  `${API_BASE_URL}/inventory/search?name=${encodeURIComponent(inventorySearch)}`,
-                  { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-                );
-                if (res.ok) {
-                  const data = await res.json();
-                  const serverItems = (data.items ?? data ?? []).map((i: any) => ({
-                    id: i.inventory_id,
-                    product_name_official: i.product_name_official,
-                    product_name: i.product_name,
-                    name: i.product_name_official || i.product_name,
-                    barcode: getInventoryBarcodeValue(i),
-                    qr_code: i.qr_code,
-                    qr: i.qr,
-                    barcode_value: getInventoryBarcodeValue(i),
-                    product_id: i.product_id,
-                    batch_number: i.batch_number,
-                    expiry_date: i.expiry_date,
-                    quantity_on_hand: Number(i.quantity_on_hand) || 0,
-                    price_regular: Number(i.price) || 0,
-                    price: Number(i.price) || 0,
-                    gondola_code: i.gondola_code || i.location,
-                    category: i.category || i.category_type || i.classification,
-                    sync_status: "synced",
-                    timestamp: Date.now(),
-                  }));
-
-                  if (serverItems.length > 0) {
-                    await db.inventory.bulkPut(serverItems);
-                    let visibleServerItems = serverItems;
-                    if (selectedCategory) {
-                      visibleServerItems = visibleServerItems.filter((item: any) =>
-                        matchesSelectedCategory(item.category, selectedCategory)
-                      );
-                    }
-
-                    allItems = visibleServerItems.map((item: any) => ({
-                      id: item.id!,
-                      name: getInventoryDisplayName(item),
-                      description: item.product_name_official || "",
-                      productId: item.product_id || item.productId,
-                      barcode: getInventoryBarcodeValue(item),
-                      expiry: item.expiry_date || item.expiry || null,
-                      quantity: item.quantity_on_hand ?? item.quantity ?? 0,
-                      price: item.price_regular || item.price || 0,
-                      gondola: item.gondola_code || item.gondola || "—",
-                      category: item.category,
-                    }));
-                  }
-                }
-              }
-            } catch { /* keep local results */ }
-          }
-        } else {
-          // Full inventory mode - load from cache first, then sync
-          if (navigator.onLine) {
-            // Load from cache immediately
-            let localItems = await db.inventory.toArray();
-            if (selectedCategory) {
-              localItems = localItems.filter(item => matchesSelectedCategory(item.category, selectedCategory));
-            }
-            allItems = localItems.map(item => ({
-              id: item.id!,
-              name: getInventoryDisplayName(item),
-              description: item.product_name_official || "",
-              productId: item.product_id || item.productId,
-              barcode: getInventoryBarcodeValue(item),
-              expiry: item.expiry_date || item.expiry || null,
-              quantity: item.quantity_on_hand || item.quantity || 0,
-              price: item.price_regular || item.price || 0,
-              gondola: item.gondola_code || item.gondola || "—",
-            }));
-
-            const initialSourceItems = applyStockFilter(allItems);
-            const initialPageStart = currentPage * ITEMS_PER_PAGE;
-            const initialPagedItems = initialSourceItems.slice(initialPageStart, initialPageStart + ITEMS_PER_PAGE);
-            setInventoryItems(initialPagedItems);
-            setTotalInventoryCount(initialSourceItems.length);
-            setSelectedInventoryIndex((previousIndex) => {
-              if (initialPagedItems.length === 0) return 0;
-              return Math.min(previousIndex, initialPagedItems.length - 1);
-            });
-            setIsLoading(false);
-
-            // Then sync with server and apply it immediately when available.
-            try {
-              const shouldSync = Date.now() - lastInventorySyncAtRef.current >= INVENTORY_SYNC_INTERVAL_MS;
-              if (!shouldSync) {
-                const sourceItems = applyStockFilter(allItems);
-                const pageStart = currentPage * ITEMS_PER_PAGE;
-                const pagedItems = sourceItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
-                setInventoryItems(pagedItems);
-                setTotalInventoryCount(sourceItems.length);
-                setSelectedInventoryIndex((previousIndex) => {
-                  if (pagedItems.length === 0) return 0;
-                  return Math.min(previousIndex, pagedItems.length - 1);
-                });
-                return;
-              }
-
-              const token = localStorage.getItem("access_token");
-              if (token) {
-                const limit = 500;
-                let offset = 0;
-                const maxPages = 25;
-                let pageCount = 0;
-                let previousPageSignature = "";
-                const serverItems: any[] = [];
-
-                while (true) {
-                  if (pageCount >= maxPages) break;
-                  const res = await fetch(`${API_BASE_URL}/inventory/branch/${currentBranchId}?limit=${limit}&offset=${offset}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                  });
-                  if (!res.ok) break;
-                  const data = await res.json();
-                  if (!Array.isArray(data) || data.length === 0) break;
-
-                  const currentPageSignature = `${data.length}:${String(data[0]?.inventory_id ?? data[0]?.id ?? "none")}`;
-                  if (currentPageSignature === previousPageSignature) {
-                    break;
-                  }
-                  previousPageSignature = currentPageSignature;
-
-                  serverItems.push(...data);
-                  pageCount += 1;
-                  if (data.length < limit) break;
-                  offset += limit;
-                }
-
-                if (serverItems.length > 0) {
-                  const normalizedServerItems = serverItems.map((i: any) => ({
-                    ...i,
-                    barcode: getInventoryBarcodeValue(i),
-                    barcode_value: getInventoryBarcodeValue(i),
-                    category: i.category || i.category_type || i.classification,
-                    sync_status: "synced",
-                    timestamp: Date.now(),
-                  }));
-
-                  await db.inventory.clear();
-                  await db.inventory.bulkAdd(normalizedServerItems);
-
-                  let filteredServerItems = normalizedServerItems;
-                  if (selectedCategory) {
-                    filteredServerItems = filteredServerItems.filter((item: any) =>
-                      matchesSelectedCategory(item.category, selectedCategory)
-                    );
-                  }
-
-                  allItems = filteredServerItems.map((item: any) => ({
-                    id: item.id!,
-                    name: getInventoryDisplayName(item),
-                    description: item.product_name_official || "",
-                    productId: item.product_id || item.productId,
-                    barcode: getInventoryBarcodeValue(item),
-                    expiry: item.expiry_date || item.expiry || null,
-                    quantity: item.quantity_on_hand || item.quantity || 0,
-                    price: item.price_regular || item.price || 0,
-                    gondola: item.gondola_code || item.gondola || "—",
-                    category: item.category,
-                  }));
-                  lastInventorySyncAtRef.current = Date.now();
-                }
-              }
-            } catch (err) {
-              console.error("Background sync failed:", err);
-            }
-          } else {
-            // Offline: load from local DB
-            let localItems = await db.inventory.toArray();
-            if (selectedCategory) {
-              localItems = localItems.filter(item => matchesSelectedCategory(item.category, selectedCategory));
-            }
-            allItems = localItems.map(item => ({
-              id: item.id!,
-              name: getInventoryDisplayName(item),
-              description: item.product_name_official || "",
-              productId: item.product_id || item.productId,
-              barcode: getInventoryBarcodeValue(item),
-              expiry: item.expiry_date || item.expiry || null,
-              quantity: item.quantity_on_hand || item.quantity || 0,
-              price: item.price_regular || item.price || 0,
-              gondola: item.gondola_code || item.gondola || "—",
-            }));
-          }
-        }
-
-        const sourceItems = isSearch ? allItems : applyStockFilter(allItems);
-        const pageStart = currentPage * ITEMS_PER_PAGE;
-        const pagedItems = sourceItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
-        setInventoryItems(pagedItems);
-        setTotalInventoryCount(sourceItems.length);
-        setSelectedInventoryIndex((previousIndex) => {
-          if (pagedItems.length === 0) return 0;
-          return Math.min(previousIndex, pagedItems.length - 1);
-        });
-      } catch (err: any) {
-        console.error("Inventory load error:", err);
-        showToast("Could not load inventory. " + (err.message || ""), "error");
-        setInventoryItems([]);
-        setTotalInventoryCount(0);
-      } finally {
+        const cached = await db.inventory.toArray();
+        setInventoryCache(cached);
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Failed to load inventory cache:', err);
         setIsLoading(false);
       }
     };
 
-    const debounceTimer = setTimeout(() => loadInventory(), 0);
-    return () => clearTimeout(debounceTimer);
-  }, [showInventoryModal, inventorySearch, selectedCategory, currentPage, stockFilter, currentBranchId]);
+    loadFullInventory();
+  }, [showInventoryModal]);
+
+  // Fast local search with useMemo
+  const filteredInventory = useMemo(() => {
+    if (inventoryCache.length === 0) return [];
+
+    let results = inventoryCache;
+
+    // Apply search filter
+    if (inventorySearch.trim()) {
+      const searchTerm = inventorySearch.trim().toLowerCase();
+      results = results.filter(item => {
+        const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
+        const barcode = getInventoryBarcodeValue(item).toLowerCase();
+        return name.includes(searchTerm) || barcode.includes(searchTerm);
+      });
+    }
+
+    // Apply category filter
+    if (selectedCategory) {
+      results = results.filter(item => matchesSelectedCategory(item.category, selectedCategory));
+    }
+
+    // Apply stock filter (only if not in search mode)
+    if (!inventorySearch.trim()) {
+      results = applyStockFilter(results);
+    }
+
+    return results;
+  }, [inventorySearch, selectedCategory, stockFilter, inventoryCache]);
+
+  // Update displayed items when filteredInventory or pagination changes
+  useEffect(() => {
+    if (!showInventoryModal) return;
+
+    const sourceItems = filteredInventory;
+    const pageStart = currentPage * ITEMS_PER_PAGE;
+    const pagedItems = sourceItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
+
+    const displayItems = pagedItems.map(item => ({
+      id: item.id!,
+      name: getInventoryDisplayName(item),
+      description: item.product_name_official || "",
+      productId: item.product_id || item.productId,
+      barcode: getInventoryBarcodeValue(item),
+      expiry: item.expiry_date || item.expiry || null,
+      quantity: item.quantity_on_hand ?? item.quantity ?? 0,
+      price: item.price_regular || item.price || 0,
+      gondola: item.gondola_code || item.gondola || "—",
+      category: item.category,
+    }));
+
+    setInventoryItems(displayItems);
+    setTotalInventoryCount(sourceItems.length);
+    setSelectedInventoryIndex((previousIndex) => {
+      if (displayItems.length === 0) return 0;
+      return Math.min(previousIndex, displayItems.length - 1);
+    });
+  }, [filteredInventory, currentPage, showInventoryModal]);
 
   // Reset states when modal opens
   useEffect(() => {
     if (showInventoryModal) {
       setCurrentPage(0);
       setInventorySearch("");
-      setSelectedCategory("MEDICINE");
+      setSelectedCategory("");
       setStockFilter("in-stock");
+      setShowBarcodeColumn(false);
       setSelectedInventoryIndex(0);
       setTimeout(() => inventorySearchRef.current?.focus(), 100);
     }
@@ -1500,7 +1497,7 @@ function CashierPosPage() {
         }
 
         if (e.key.toLowerCase() === "l") {
-          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isCheckoutOpen && !isReceiptConfirmOpen && !isKeybindHelpOpen) {
+          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isLiveVoidModalOpen && !isCheckoutOpen && !isReceiptConfirmOpen && !isKeybindHelpOpen && !actionInputModal.isOpen && !readingInputState.isOpen) {
             e.preventDefault();
             setTerminalLockError(null);
             setIsTerminalLocked(true);
@@ -1569,7 +1566,7 @@ function CashierPosPage() {
         }
 
         if (e.key === " ") {
-          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isCheckoutOpen && !isKeybindHelpOpen) {
+          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isLiveVoidModalOpen && !isCheckoutOpen && !isKeybindHelpOpen && !actionInputModal.isOpen && !readingInputState.isOpen) {
             e.preventDefault();
             setInventorySearch("");
             setSelectedCategory("MEDICINE");
@@ -1629,7 +1626,7 @@ function CashierPosPage() {
         }
 
         if (e.key === "Enter") {
-          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen) {
+          if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isLiveVoidModalOpen && !actionInputModal.isOpen && !readingInputState.isOpen) {
             e.preventDefault();
             barcodeInputRef.current?.focus();
           }
@@ -1710,6 +1707,7 @@ function CashierPosPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
+    actionInputModal.isOpen,
     appendJournal,
     cartItems,
     discountTypeIndex,
@@ -1739,11 +1737,13 @@ function CashierPosPage() {
     isEditingOpeningBalance,
     isJournalOpen,
     isKeybindHelpOpen,
+    isLiveVoidModalOpen,
     isManagerModalOpen,
     isLoadingJournal,
     isReceiptConfirmOpen,
     isReturnsOpen,
     isTerminalLocked,
+    readingInputState.isOpen,
     shiftId,
     showInventoryModal,
   ]);
@@ -1751,6 +1751,49 @@ function CashierPosPage() {
   const subtotal = cartItems.reduce((sum, item) => sum + item.total, 0);
   const discount = subtotal * DISCOUNT_RATES[discountTypeIndex];
   const amountDue = subtotal - discount + addOn;
+
+  const handleConfirmSeniorDiscountDetails = useCallback(async () => {
+    const idNumber = seniorCitizenIdNumber.trim();
+    const name = seniorCitizenName.trim();
+    const trimmedLimit = seniorDiscountLimitInput.trim();
+    const parsedLimit = trimmedLimit ? Number(trimmedLimit) : null;
+
+    if (!idNumber) {
+      setSeniorDiscountError("Senior Citizen ID no. is required.");
+      return;
+    }
+
+    if (!name) {
+      setSeniorDiscountError("Senior Citizen name is required.");
+      return;
+    }
+
+    if (parsedLimit !== null && (!Number.isFinite(parsedLimit) || parsedLimit <= 0)) {
+      setSeniorDiscountError("Discount limit must be a valid number greater than 0 when provided.");
+      return;
+    }
+
+    if (parsedLimit !== null && discount > parsedLimit) {
+      setSeniorDiscountError(`Computed discount (PHP ${discount.toFixed(2)}) exceeds entered limit.`);
+      return;
+    }
+
+    const details: SeniorDiscountDetails = {
+      idNumber,
+      name,
+      discountLimit: parsedLimit,
+    };
+
+    setSeniorDiscountDetails(details);
+    setSeniorDiscountError(null);
+    setIsSeniorDiscountModalOpen(false);
+    setIsCheckoutOpen(true);
+    await appendJournal(
+      "F12",
+      "Senior Discount Verification",
+      `ID: ${idNumber}, Name: ${name}, Limit: ${parsedLimit == null ? "N/A" : parsedLimit.toFixed(2)}`
+    );
+  }, [appendJournal, discount, seniorCitizenIdNumber, seniorCitizenName, seniorDiscountLimitInput]);
 
   const addItemToSelected = (item: InventoryItem) => {
     const now = Date.now();
@@ -1842,10 +1885,6 @@ function CashierPosPage() {
     setCurrentItemDescription("");
     setCurrentQuantity(1);
     setShowInventoryModal(false);
-  };
-
-  const removeItemFromCart = (id: number) => {
-    setCartItems(prev => prev.filter(item => item.id !== id));
   };
 
   const handleDirectAddToCart = useCallback((item: { id: number; name: string; barcode: string; price: number; stock: number }) => {
@@ -1969,6 +2008,11 @@ function CashierPosPage() {
       setCartItems([]);
       setAddOn(0);
       setDiscountTypeIndex(0);
+      setSeniorCitizenIdNumber("");
+      setSeniorCitizenName("");
+      setSeniorDiscountLimitInput("");
+      setSeniorDiscountError(null);
+      setSeniorDiscountDetails(null);
       setInvoiceSequence((previous) => previous + 1);
       setTransactionSequence((previous) => previous + 1);
       localStorage.removeItem("pos_cartItems");
@@ -1976,13 +2020,20 @@ function CashierPosPage() {
       localStorage.removeItem("pos_discountTypeIndex");
       setIsReceiptConfirmOpen(receiptEnabled);
       await appendJournal("F12", "Payment Completed", `Receipt ${receiptEnabled ? "ON" : "OFF"} • Net ${amountDue.toFixed(2)} • Tendered ${tendered.toFixed(2)} • Change ${change.toFixed(2)}`);
+      if (discountTypeIndex === SENIOR_DISCOUNT_INDEX && seniorDiscountDetails) {
+        await appendJournal(
+          "F12",
+          "Senior Discount Applied",
+          `Name: ${seniorDiscountDetails.name}, ID: ${seniorDiscountDetails.idNumber}, Limit: ${seniorDiscountDetails.discountLimit == null ? "N/A" : seniorDiscountDetails.discountLimit.toFixed(2)}, Actual Discount: ${discount.toFixed(2)}`
+        );
+      }
     } catch (err) {
       await appendJournal("F12", "Payment Failed", "Payment processing failed.");
       showToast("Payment processing failed", "error");
     } finally {
       setIsLoading(false);
     }
-  }, [addOn, amountDue, appendJournal, cartItems, cashierName, currentBranchName, discount, invoiceNo, receiptEnabled, subtotal, transNo]);
+  }, [addOn, amountDue, appendJournal, cartItems, cashierName, currentBranchName, discount, discountTypeIndex, invoiceNo, receiptEnabled, seniorDiscountDetails, subtotal, transNo]);
 
   const handleOpenStation = async (amount: number) => {
     setIsOpeningShift(true);
@@ -2116,7 +2167,15 @@ function CashierPosPage() {
       if (pendingAction === "payment") {
         setIsManagerModalOpen(false);
         setPendingAction(null);
-        setIsCheckoutOpen(true);
+        if (discountTypeIndex === SENIOR_DISCOUNT_INDEX) {
+          setSeniorDiscountError(null);
+          setIsSeniorDiscountModalOpen(true);
+          window.setTimeout(() => {
+            seniorIdInputRef.current?.focus();
+          }, 0);
+        } else {
+          setIsCheckoutOpen(true);
+        }
         return;
       }
 
@@ -2210,7 +2269,6 @@ function CashierPosPage() {
 
           <CartDisplay
             cartItems={cartItems}
-            removeItemFromCart={removeItemFromCart}
             currentItemDescription={currentItemDescription}
             setCurrentItemDescription={setCurrentItemDescription}
             discountTypeLabel={discountTypeLabel}
@@ -2395,6 +2453,19 @@ function CashierPosPage() {
                   Recall Previous Transactions (F9)
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => void handleReturnReceiptToCart()}
+                  disabled={!selectedCompletedTransaction}
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black uppercase text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Return Receipt Items To Cart
+                </button>
+
+                <p className="text-[11px] text-slate-500">
+                  Return action: loads items from selected receipt back to current POS cart. Void action is separate on the right panel.
+                </p>
+
                 {recalledCompletedTransactions.length > 0 && (
                   <div className="max-h-36 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
                     {recalledCompletedTransactions.map((transaction) => (
@@ -2416,7 +2487,7 @@ function CashierPosPage() {
               </div>
 
               <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="text-sm font-black uppercase tracking-wide text-[#062d8c]">Void Workflow</h4>
+                <h4 className="text-sm font-black uppercase tracking-wide text-[#062d8c]">Void Workflow (Separate From Return)</h4>
 
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Enter Product (from receipt)</label>
@@ -2636,7 +2707,7 @@ function CashierPosPage() {
                   {journalEntries.map((entry) => (
                     <div key={entry.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-black text-[#062d8c]">{entry.keyLabel} • {entry.action}</p>
+                        <p className="text-xs font-black text-[#062d8c]">{entry.action}</p>
                         <p className="text-[11px] text-slate-500">{new Date(entry.timestamp).toLocaleString()}</p>
                       </div>
                       {entry.details && <p className="mt-1 text-xs text-slate-600">{entry.details}</p>}
@@ -2719,6 +2790,80 @@ function CashierPosPage() {
         </div>
       )}
 
+      {isLiveVoidModalOpen && (
+        <div className="fixed inset-0 z-[78] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-red-700 to-red-600 px-6 py-4 text-white">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-100">Manager Approval Required</p>
+              <h3 className="mt-1 text-xl font-black">Live Item Void</h3>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="text-xs font-bold uppercase text-red-600">Item To Void</p>
+                <p className="mt-2 text-sm font-black text-slate-900">{liveVoidItem?.description || "No item selected"}</p>
+                {liveVoidItem && (
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                    <span>Qty: <strong>{liveVoidItem.quantity}</strong></span>
+                    <span>Price: <strong>₱{liveVoidItem.price.toFixed(2)}</strong></span>
+                    <span>Total: <strong>₱{liveVoidItem.total.toFixed(2)}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Manager PIN</label>
+                <input
+                  type="password"
+                  value={liveVoidPin}
+                  onChange={(event) => setLiveVoidPin(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleConfirmLiveVoid();
+                    }
+                  }}
+                  placeholder="Enter manager PIN"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-red-500"
+                  autoFocus
+                />
+              </div>
+
+              {liveVoidError && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {liveVoidError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLiveVoidModalOpen(false);
+                    setLiveVoidItem(null);
+                    setLiveVoidPin("");
+                    setLiveVoidError(null);
+                    window.setTimeout(() => barcodeInputRef.current?.focus(), 0);
+                  }}
+                  disabled={isLiveVoidSubmitting}
+                  className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-black uppercase text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmLiveVoid()}
+                  disabled={isLiveVoidSubmitting}
+                  className="flex-1 rounded-xl bg-red-600 px-4 py-3 text-sm font-black uppercase text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  {isLiveVoidSubmitting ? "Verifying..." : "Approve Void"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <InventoryModal
         showInventoryModal={showInventoryModal}
         inventorySearch={inventorySearch}
@@ -2727,6 +2872,8 @@ function CashierPosPage() {
         setSelectedCategory={setSelectedCategory}
         stockFilter={stockFilter}
         setStockFilter={setStockFilter}
+        showBarcodeColumn={showBarcodeColumn}
+        setShowBarcodeColumn={setShowBarcodeColumn}
         isSearchMode={Boolean(inventorySearch.trim())}
         inventoryItems={inventoryItems}
         isLoading={isLoading}
@@ -2802,6 +2949,246 @@ function CashierPosPage() {
         onClose={() => setIsCheckoutOpen(false)}
         onConfirm={(tendered) => processPayment(tendered)}
       />
+
+      {isSeniorDiscountModalOpen && (
+        <div className="fixed inset-0 z-[79] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-[#0f766e] to-[#115e59] px-6 py-4 text-white">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-100">Required Before Payment</p>
+              <h3 className="mt-1 text-xl font-black">Senior Citizen Discount Details</h3>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Senior Citizen ID No.</label>
+                <input
+                  id="senior-id-number"
+                  ref={seniorIdInputRef}
+                  type="text"
+                  value={seniorCitizenIdNumber}
+                  onChange={(event) => setSeniorCitizenIdNumber(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      seniorNameInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder="Enter SC ID number"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0f766e]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Senior Citizen Name</label>
+                <input
+                  ref={seniorNameInputRef}
+                  type="text"
+                  value={seniorCitizenName}
+                  onChange={(event) => setSeniorCitizenName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      seniorLimitInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder="Enter full name"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0f766e]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Discount Limit (Optional)</label>
+                <input
+                  ref={seniorLimitInputRef}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={seniorDiscountLimitInput}
+                  onChange={(event) => setSeniorDiscountLimitInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      seniorSubmitButtonRef.current?.focus();
+                    }
+                  }}
+                  placeholder="Optional allowed discount amount"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0f766e]"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">Current computed senior discount: PHP {discount.toFixed(2)}</p>
+              </div>
+
+              {seniorDiscountError && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {seniorDiscountError}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSeniorDiscountModalOpen(false);
+                    setSeniorDiscountError(null);
+                    setPendingAction(null);
+                  }}
+                  className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-black uppercase text-slate-700 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  ref={seniorSubmitButtonRef}
+                  type="button"
+                  onClick={() => void handleConfirmSeniorDiscountDetails()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleConfirmSeniorDiscountDetails();
+                    }
+                  }}
+                  className="flex-1 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black uppercase text-white hover:bg-emerald-700"
+                >
+                  Continue to Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionInputModal.isOpen && (
+        <div className="fixed inset-0 z-[79] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-[#062d8c] to-[#041848] px-6 py-4 text-white">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-100">POS Input</p>
+              <h3 className="mt-1 text-xl font-black">
+                {actionInputModal.mode === "add-on"
+                  ? "Add-on Amount"
+                  : actionInputModal.mode === "department"
+                    ? "Open Department"
+                    : "Pick Up Amount"}
+              </h3>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">
+                  {actionInputModal.mode === "department" ? "Department Code" : "Amount"}
+                </label>
+                <input
+                  ref={actionInputRef}
+                  type={actionInputModal.mode === "department" ? "text" : "number"}
+                  min={actionInputModal.mode === "department" ? undefined : 0}
+                  step={actionInputModal.mode === "department" ? undefined : "0.01"}
+                  value={actionInputModal.value}
+                  onChange={(event) =>
+                    setActionInputModal((prev) => ({ ...prev, value: event.target.value, error: null }))
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleConfirmActionInputModal();
+                    }
+                  }}
+                  placeholder={
+                    actionInputModal.mode === "add-on"
+                      ? "Enter add-on amount"
+                      : actionInputModal.mode === "department"
+                        ? "Enter department code"
+                        : "Enter pickup amount"
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#062d8c]"
+                />
+              </div>
+
+              {actionInputModal.error && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {actionInputModal.error}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActionInputModal((prev) => ({ ...prev, isOpen: false, error: null }))}
+                  className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-black uppercase text-slate-700 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmActionInputModal()}
+                  className="flex-1 rounded-xl bg-[#062d8c] px-4 py-3 text-sm font-black uppercase text-white hover:bg-[#041848]"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {readingInputState.isOpen && (
+        <div className="fixed inset-0 z-[79] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-700 to-amber-600 px-6 py-4 text-white">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-100">Reading Setup</p>
+              <h3 className="mt-1 text-xl font-black">{readingInputState.type} Reading Input</h3>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <p className="text-sm text-slate-600">
+                {readingInputState.type === "Z"
+                  ? "Enter final cash count. Confirming will generate Z Reading and close the shift."
+                  : "Enter current cash count to generate X Reading summary."}
+              </p>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Cash Count</label>
+                <input
+                  ref={readingCashInputRef}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={readingInputState.cashCountInput}
+                  onChange={(event) =>
+                    setReadingInputState((prev) => ({ ...prev, cashCountInput: event.target.value, error: null }))
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleConfirmReadingInput();
+                    }
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-amber-600"
+                />
+              </div>
+
+              {readingInputState.error && (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {readingInputState.error}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReadingInputState((prev) => ({ ...prev, isOpen: false, error: null }))}
+                  className="flex-1 rounded-xl border border-slate-300 px-4 py-3 text-sm font-black uppercase text-slate-700 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmReadingInput()}
+                  className="flex-1 rounded-xl bg-amber-600 px-4 py-3 text-sm font-black uppercase text-white hover:bg-amber-700"
+                >
+                  Confirm {readingInputState.type} Reading
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <TerminalLockModal
         isOpen={isTerminalLocked}

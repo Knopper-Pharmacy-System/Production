@@ -374,7 +374,7 @@ function LoginPage() {
             src={banner}
             alt="Knopper"
             className="pointer-events-none mt-3"
-            style={{ width: "260px", height: "auto" }}
+            style={{ width: "220px", height: "auto" }}
           />
         </div>
 

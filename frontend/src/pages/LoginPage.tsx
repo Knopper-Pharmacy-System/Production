@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ChevronDown, LoaderCircle, LogIn, AlertCircle, X } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  ChevronDown,
+  LoaderCircle,
+  LogIn,
+  AlertCircle,
+  X,
+} from "lucide-react";
 import bannerLogo from "../assets/banner_logo.png";
 import logoOutline from "../assets/logo_outline.png";
 import { login } from "../api/auth.js";
@@ -29,7 +37,8 @@ const BRANCHES = [
   {
     value: "PANGANIBAN BRANCH",
     label: "PANGANIBAN BRANCH",
-    address: "Door 11 & 12, Pavilion 7, Panganiban Drive Concepcion Pequeña, Naga City",
+    address:
+      "Door 11 & 12, Pavilion 7, Panganiban Drive Concepcion Pequeña, Naga City",
   },
 ];
 
@@ -62,10 +71,22 @@ function LoginPage() {
   const { login: authLogin } = useAuth();
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [branch, setBranch] = useState(() => localStorage.getItem("lastBranch") || "");
-  const [currentDateTime, setCurrentDateTime] = useState({ date: "", time: "" });
-  const [credentials, setCredentials] = useState({ username: "", password: "" });
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({ branch: false, username: false, password: false });
+  const [branch, setBranch] = useState(
+    () => localStorage.getItem("lastBranch") || "",
+  );
+  const [currentDateTime, setCurrentDateTime] = useState({
+    date: "",
+    time: "",
+  });
+  const [credentials, setCredentials] = useState({
+    username: "",
+    password: "",
+  });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({
+    branch: false,
+    username: false,
+    password: false,
+  });
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -132,7 +153,10 @@ function LoginPage() {
     };
 
     setCurrentDateTime(formatDateTime());
-    const interval = window.setInterval(() => setCurrentDateTime(formatDateTime()), 1000);
+    const interval = window.setInterval(
+      () => setCurrentDateTime(formatDateTime()),
+      1000,
+    );
     return () => window.clearInterval(interval);
   }, []);
 
@@ -149,7 +173,10 @@ function LoginPage() {
   );
 
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>, nextRef: React.RefObject<HTMLInputElement | null> | null) => {
+    (
+      event: KeyboardEvent<HTMLInputElement>,
+      nextRef: React.RefObject<HTMLInputElement | null> | null,
+    ) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
       if (nextRef?.current) {
@@ -164,66 +191,82 @@ function LoginPage() {
   const validateForm = useCallback(() => {
     const trimmedUsername = credentials.username.trim();
     const trimmedPassword = credentials.password.trim();
-    const errors: FieldErrors = { branch: !branch, username: !trimmedUsername, password: !trimmedPassword };
+    const errors: FieldErrors = {
+      branch: !branch,
+      username: !trimmedUsername,
+      password: !trimmedPassword,
+    };
 
     setFieldErrors(errors);
     return !errors.branch && !errors.username && !errors.password;
   }, [credentials, branch]);
 
-  const handleLogin = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setFieldErrors({ branch: false, username: false, password: false });
+  const handleLogin = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setFieldErrors({ branch: false, username: false, password: false });
 
-    if (!validateForm()) {
-      const missing = [];
-      if (!branch) missing.push("Branch");
-      if (!credentials.username.trim()) missing.push("User ID");
-      if (!credentials.password.trim()) missing.push("Password");
-      showToast(`Required field${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`);
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      console.log("[LOGIN] Attempting with username:", credentials.username.trim());
-
-      const data = await login({
-        username: credentials.username.trim(),
-        password: credentials.password.trim(),
-      });
-
-      console.log("[LOGIN] Success - received:", { role: data.role });
-
-      // Save token and role
-      authLogin(data.access_token, data.role, credentials.password.trim());
-      localStorage.setItem("cashier_username", credentials.username.trim());
-
-      const destination = roleHomePath(data.role);
-      if (destination === "/") {
-        showToast(`Unsupported role: ${data.role || "unknown"}`);
+      if (!validateForm()) {
+        const missing = [];
+        if (!branch) missing.push("Branch");
+        if (!credentials.username.trim()) missing.push("User ID");
+        if (!credentials.password.trim()) missing.push("Password");
+        showToast(
+          `Required field${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}`,
+        );
         return;
       }
 
-      showToast("Login successful!");
-      navigate(destination, { replace: true });
-    } catch (err: any) {
-      console.error("[LOGIN] Failed:", err);
+      setIsLoading(true);
 
-      let message = "Authentication failed. Please try again.";
-      if (err.message.includes("401") || err.message.includes("Invalid")) {
-        message = "Invalid username or password";
-      } else if (err.message.includes("fetch") || err.message.includes("network")) {
-        message = "Cannot reach server. Login online first for offline access.";
-      } else if (err.message) {
-        message = err.message;
+      try {
+        console.log(
+          "[LOGIN] Attempting with username:",
+          credentials.username.trim(),
+        );
+
+        const data = await login({
+          username: credentials.username.trim(),
+          password: credentials.password.trim(),
+        });
+
+        console.log("[LOGIN] Success - received:", { role: data.role });
+
+        // Save token and role
+        authLogin(data.access_token, data.role, credentials.password.trim());
+        localStorage.setItem("cashier_username", credentials.username.trim());
+
+        const destination = roleHomePath(data.role);
+        if (destination === "/") {
+          showToast(`Unsupported role: ${data.role || "unknown"}`);
+          return;
+        }
+
+        showToast("Login successful!");
+        navigate(destination, { replace: true });
+      } catch (err: any) {
+        console.error("[LOGIN] Failed:", err);
+
+        let message = "Authentication failed. Please try again.";
+        if (err.message.includes("401") || err.message.includes("Invalid")) {
+          message = "Invalid username or password";
+        } else if (
+          err.message.includes("fetch") ||
+          err.message.includes("network")
+        ) {
+          message =
+            "Cannot reach server. Login online first for offline access.";
+        } else if (err.message) {
+          message = err.message;
+        }
+
+        showToast(message);
+      } finally {
+        setIsLoading(false);
       }
-
-      showToast(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [authLogin, credentials, navigate, validateForm, branch, showToast]);
+    },
+    [authLogin, credentials, navigate, validateForm, branch, showToast],
+  );
 
   const getInputClasses = (error: boolean) =>
     `flex items-center bg-[#edeaea] border-2 ${
@@ -232,7 +275,7 @@ function LoginPage() {
 
   return (
     <div
-      className="bg-gradient-to-b from-[#062d8c] from-[59%] to-[#3266e6] min-h-screen w-full flex flex-col overflow-x-hidden"
+      className="bg-linear-to-b from-[#062d8c] from-59% to-[#3266e6] min-h-screen w-full flex flex-col overflow-x-hidden"
       data-name="newest login"
     >
       <style>{`
@@ -261,7 +304,11 @@ function LoginPage() {
       )}
       <header className="flex items-center justify-between px-4 sm:px-6 lg:px-12 pt-10 sm:pt-14 pb-4 shrink-0">
         <div className="h-10 sm:h-12 lg:h-16 w-auto">
-          <img alt="Banner Logo" className="h-full w-auto object-contain pointer-events-none" src={bannerLogo} />
+          <img
+            alt="Banner Logo"
+            className="h-full w-auto object-contain pointer-events-none"
+            src={bannerLogo}
+          />
         </div>
 
         <p className="hidden md:block font-semibold text-base lg:text-xl text-[rgba(228,226,226,0.44)] whitespace-nowrap">
@@ -278,7 +325,9 @@ function LoginPage() {
             }`}
           >
             <div className="absolute border border-[#062d8c] inset-0 pointer-events-none rounded-xl sm:rounded-2xl shadow-[0_0_40px_rgba(3,31,99,0.1)]" />
-            <div className={`w-2.5 h-2.5 rounded-full ${isOnline ? "bg-[#acf9be]" : "bg-white"}`} />
+            <div
+              className={`w-2.5 h-2.5 rounded-full ${isOnline ? "bg-[#acf9be]" : "bg-white"}`}
+            />
             <p className="font-semibold text-[#acf9be] text-sm sm:text-base whitespace-nowrap">
               {isOnline ? "ONLINE" : "OFFLINE"}
             </p>
@@ -291,26 +340,44 @@ function LoginPage() {
       <div className="flex-1 flex flex-col px-4 sm:px-6 lg:px-12 min-h-0">
         <main className="flex flex-col lg:flex-row flex-1 gap-6 py-6 min-h-0">
           <div className="hidden lg:flex lg:w-2/5 items-center justify-center shrink-0">
-            <img alt="Logo Outline" className="w-full max-w-[420px] h-auto object-contain pointer-events-none" src={logoOutline} />
+            <img
+              alt="Logo Outline"
+              className="w-full max-w-105 h-auto object-contain pointer-events-none"
+              src={logoOutline}
+            />
           </div>
 
           <div className="flex flex-col gap-5 flex-1 justify-center">
             <div className="flex lg:hidden justify-center pb-4">
-              <img alt="Logo Outline" className="h-48 sm:h-64 w-auto object-contain pointer-events-none opacity-80" src={logoOutline} />
+              <img
+                alt="Logo Outline"
+                className="h-48 sm:h-64 w-auto object-contain pointer-events-none opacity-80"
+                src={logoOutline}
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 items-start sm:items-center gap-4 sm:gap-6">
               <div className="flex flex-col gap-2 sm:col-span-1">
-                <p className="font-semibold text-xl sm:text-2xl text-white">BRANCH:</p>
-                <div className={`relative bg-[#f4f4f4] flex items-center gap-2 h-12 sm:h-14 px-4 rounded-2xl shadow-[0_0_40px_rgba(3,31,99,0.25)] cursor-pointer w-full max-w-sm transition-shadow ${fieldErrors.branch ? "ring-2 ring-red-400" : ""}`}>
+                <p className="font-semibold text-xl sm:text-2xl text-white">
+                  BRANCH:
+                </p>
+                <div
+                  className={`relative bg-[#f4f4f4] flex items-center gap-2 h-12 sm:h-14 px-4 rounded-2xl shadow-[0_0_40px_rgba(3,31,99,0.25)] cursor-pointer w-full max-w-sm transition-shadow ${fieldErrors.branch ? "ring-2 ring-red-400" : ""}`}
+                >
                   <p
                     className={`font-semibold text-base sm:text-lg truncate flex-1 text-center ${
-                      branch ? "text-[#103182]" : fieldErrors.branch ? "text-red-400" : "text-gray-500"
+                      branch
+                        ? "text-[#103182]"
+                        : fieldErrors.branch
+                          ? "text-red-400"
+                          : "text-gray-500"
                     }`}
                   >
                     {selectedBranch?.label ?? "Select Branch"}
                   </p>
-                  <ChevronDown className={`text-[#103182] w-5 h-5 shrink-0 ${fieldErrors.branch ? "text-red-400" : ""}`} />
+                  <ChevronDown
+                    className={`text-[#103182] w-5 h-5 shrink-0 ${fieldErrors.branch ? "text-red-400" : ""}`}
+                  />
                   <select
                     value={branch}
                     onChange={(event) => {
@@ -342,16 +409,24 @@ function LoginPage() {
             </div>
 
             <div className="relative bg-[#001445]/50 rounded-3xl border border-white/20 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,20,69,0.6)] ring-1 ring-white/10 p-6 sm:p-8 lg:p-10 flex flex-col sm:flex-row gap-6">
-              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none rounded-3xl" />
+              <div className="absolute inset-0 bg-linear-to-br from-white/10 to-transparent pointer-events-none rounded-3xl" />
               <div className="flex-1 flex flex-col gap-1">
-                <span className="font-semibold text-sm tracking-wider text-[rgba(190,140,0,0.85)]">CURRENT DATE</span>
-                <span className="font-semibold text-[#c9d9ff] text-xl sm:text-2xl lg:text-3xl">{currentDateTime.date}</span>
+                <span className="font-semibold text-sm tracking-wider text-[rgba(190,140,0,0.85)]">
+                  CURRENT DATE
+                </span>
+                <span className="font-semibold text-[#c9d9ff] text-xl sm:text-2xl lg:text-3xl">
+                  {currentDateTime.date}
+                </span>
               </div>
               <div className="hidden sm:block w-px bg-gray-500/50 mx-6 lg:mx-10 self-stretch" />
               <div className="block sm:hidden h-px bg-gray-500/50 my-4" />
               <div className="flex-1 flex flex-col gap-1">
-                <span className="font-bold text-sm tracking-wider text-[rgba(190,140,0,0.85)]">LOCAL TIME</span>
-                <span className="font-semibold text-[#c9d9ff] text-2xl sm:text-3xl lg:text-4xl tabular-nums">{currentDateTime.time}</span>
+                <span className="font-bold text-sm tracking-wider text-[rgba(190,140,0,0.85)]">
+                  LOCAL TIME
+                </span>
+                <span className="font-semibold text-[#c9d9ff] text-2xl sm:text-3xl lg:text-4xl tabular-nums">
+                  {currentDateTime.time}
+                </span>
               </div>
             </div>
           </div>
@@ -366,7 +441,9 @@ function LoginPage() {
             <fieldset disabled={isLoading} className="contents">
               <div className="flex-1 min-w-0 relative">
                 <div className={getInputClasses(fieldErrors.username)}>
-                  <span className="font-semibold text-[#001d63] text-base sm:text-lg whitespace-nowrap shrink-0">USER ID</span>
+                  <span className="font-semibold text-[#001d63] text-base sm:text-lg whitespace-nowrap shrink-0">
+                    USER ID
+                  </span>
                   <div className="w-px h-8 bg-[#606060]/60 shrink-0" />
                   <input
                     ref={usernameRef}
@@ -385,7 +462,9 @@ function LoginPage() {
 
               <div className="flex-1 min-w-0 relative">
                 <div className={getInputClasses(fieldErrors.password)}>
-                  <span className="font-semibold text-[#001d63] text-base sm:text-lg whitespace-nowrap shrink-0">PASSWORD</span>
+                  <span className="font-semibold text-[#001d63] text-base sm:text-lg whitespace-nowrap shrink-0">
+                    PASSWORD
+                  </span>
                   <div className="w-px h-8 bg-[#606060]/60 shrink-0" />
                   <input
                     ref={passwordRef}
@@ -403,7 +482,9 @@ function LoginPage() {
                     onClick={() => setShowPassword((prev) => !prev)}
                     className="shrink-0 p-1 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
                     disabled={isLoading}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                   >
                     {showPassword ? <EyeOff size={22} /> : <Eye size={22} />}
                   </button>
@@ -435,9 +516,13 @@ function LoginPage() {
       </div>
 
       <footer className="shrink-0 pb-4 px-4 sm:px-6 lg:px-12 flex items-center justify-center gap-3 text-center">
-        <p className="font-semibold text-xs sm:text-sm text-[rgba(228,226,226,0.44)]">Core Node v2.4.0</p>
+        <p className="font-semibold text-xs sm:text-sm text-[rgba(228,226,226,0.44)]">
+          Core Node v2.4.0
+        </p>
         <div className="w-1.5 h-1.5 bg-[#E4E2E2] opacity-40 rounded-full hidden sm:block" />
-        <p className="font-semibold text-xs sm:text-sm text-[rgba(228,226,226,0.44)]">AES-256 Encrypted</p>
+        <p className="font-semibold text-xs sm:text-sm text-[rgba(228,226,226,0.44)]">
+          AES-256 Encrypted
+        </p>
       </footer>
     </div>
   );

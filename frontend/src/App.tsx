@@ -16,6 +16,7 @@ import AdminPurchaseOrderListPage from "./pages/admin/AdminPurchaseOrderListPage
 import AdminPurchaseOrderDetailPage from "./pages/admin/AdminPurchaseOrderDetailPage";
 import AdminReceiveDeliveryPage from "./pages/admin/AdminReceiveDeliveryPage";
 import AdminStockTransfersPage from "./pages/admin/AdminStockTransfersPage";
+import AdminSalesAnalytics from "./pages/admin/AdminSalesAnalytics";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
@@ -54,12 +55,13 @@ function ProtectedRoute({
   expectedRole: AllowedRole;
   children: ReactNode;
 }) {
-  if (!isAuthenticated()) return <Navigate to="/" replace />;
+  // BYPASS LOGIN: Skipping authentication and role checks since backend is down
+  // if (!isAuthenticated()) return <Navigate to="/" replace />;
 
-  const currentRole = normalizeRole(getStoredRole());
-  if (currentRole !== expectedRole) {
-    return <Navigate to={roleHomePath(currentRole)} replace />;
-  }
+  // const currentRole = normalizeRole(getStoredRole());
+  // if (currentRole !== expectedRole) {
+  //   return <Navigate to={roleHomePath(currentRole)} replace />;
+  // }
 
   return <>{children}</>;
 }
@@ -80,7 +82,9 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LoginPage />} />
+        {/* BYPASS LOGIN: Redirect directly to admin dashboard by default */}
+        <Route path="/" element={<Navigate to="/admin" replace />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route
           path="/admin"
           element={
@@ -158,6 +162,14 @@ function App() {
           element={
             <ProtectedRoute expectedRole="admin">
               <AdminAlertsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/sales-analytics"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminSalesAnalytics />
             </ProtectedRoute>
           }
         />

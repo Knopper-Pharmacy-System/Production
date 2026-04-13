@@ -19,6 +19,7 @@ import {
   type ShiftSession,
 } from "../../features/pos/api/db";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 
 type SettingsTab = "general" | "inventory" | "audit" | "cash" | "security";
 type ResetSection = "sales" | "stock_batches" | "procurement" | "transfers";
@@ -101,9 +102,6 @@ const RESET_SECTION_OPTIONS: Array<{
     hint: "Transfer manifests and transfer item records between branches.",
   },
 ];
-
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 const TAB_CONFIG: Array<{
   id: SettingsTab;

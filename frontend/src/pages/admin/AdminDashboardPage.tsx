@@ -25,6 +25,7 @@ import AdminFooter from "../../components/admin/AdminFooter";
 import LowStocksModal from "../../components/admin/LowStocksModal";
 import NearExpiryModal from "../../components/admin/NearExpiryModal";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 import {
   getDashboardMetrics as fetchDashboardMetrics,
   getLowStockItems,
@@ -98,9 +99,6 @@ const salesTrendYear: SalesDataPoint[] = [
   { day: "Nov", sales: 260000 },
   { day: "Dec", sales: 285000 },
 ];
-
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 const BRANCHES = [
   {

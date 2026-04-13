@@ -17,9 +17,7 @@ import AdminHeader from "../../components/admin/AdminHeader";
 import AdminFooter from "../../components/admin/AdminFooter";
 import CreateUserModal from "../../components/admin/CreateUserModal";
 import { getToken } from "../../hooks/useAuth";
-
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
+import { API_BASE_URL } from "../../api/baseUrl";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

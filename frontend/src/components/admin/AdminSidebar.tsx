@@ -32,7 +32,7 @@ const ROUTE_MAP: Record<string, string> = {
   Inventory: "/admin/inventory",
   "View Inventory": "/admin/inventory",
   "Stock Transfer": "/admin/stock-transfer",
-  "Sales Reports": "/admin/sales-analytics",
+  "Sales Reports": "/admin/sales-reports",
   Branches: "/admin/branches",
   Products: "/admin/products",
   Users: "/admin/users",

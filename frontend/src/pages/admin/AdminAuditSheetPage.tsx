@@ -17,6 +17,7 @@ import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
 import AdminFooter from "../../components/admin/AdminFooter";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 
 // --- Types -------------------------------------------------------------------
 
@@ -165,9 +166,6 @@ const INITIAL_DISCREPANCY: DiscrepancyEntry[] = [
     accepted: false,
   },
 ];
-
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   "BMC MAIN": 1,

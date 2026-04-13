@@ -16,6 +16,7 @@ import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
 import AdminFooter from "../../components/admin/AdminFooter";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 
 type BranchStatus = "Healthy" | "Needs Attention" | "Setup Needed";
 
@@ -71,8 +72,6 @@ type BranchRow = {
   inventoryValue: number;
 };
 
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 const ITEMS_PER_PAGE = 10;
 
 const PANEL_CARD_STYLE = {

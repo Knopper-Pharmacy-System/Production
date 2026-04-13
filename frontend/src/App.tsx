@@ -16,7 +16,6 @@ import AdminPurchaseOrderListPage from "./pages/admin/AdminPurchaseOrderListPage
 import AdminPurchaseOrderDetailPage from "./pages/admin/AdminPurchaseOrderDetailPage";
 import AdminReceiveDeliveryPage from "./pages/admin/AdminReceiveDeliveryPage";
 import AdminStockTransfersPage from "./pages/admin/AdminStockTransfersPage";
-import AdminSalesAnalytics from "./pages/admin/AdminSalesAnalytics";
 import ManagerDashboardPage from "./pages/manager/ManagerDashboardPage";
 import ManagerBranchesPage from "./pages/manager/ManagerBranchesPage";
 import ManagerUploadHistoryPage from "./pages/manager/ManagerUploadHistoryPage";
@@ -186,7 +185,7 @@ function App() {
           path="/admin/sales-analytics"
           element={
             <ProtectedRoute expectedRole="admin">
-              <AdminSalesAnalytics />
+              <AdminSalesReportPage />
             </ProtectedRoute>
           }
         />

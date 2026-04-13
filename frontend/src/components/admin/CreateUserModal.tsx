@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { X, Eye, EyeOff, UserPlus, Loader2 } from "lucide-react";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 const BRANCH_OPTIONS = [
   { label: "BMC MAIN", value: 1 },

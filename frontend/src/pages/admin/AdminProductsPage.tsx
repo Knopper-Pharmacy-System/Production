@@ -5,6 +5,7 @@ import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
 import AdminFooter from "../../components/admin/AdminFooter";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 
 type BranchOption = { id: number; label: string };
 type ApiInventoryItem = {
@@ -135,8 +136,6 @@ type ProductEditorDraft = {
   suppliers: SupplierEntry[];
 };
 
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 const BRANCHES: BranchOption[] = [
   { id: 1, label: "BMC MAIN" },
   { id: 2, label: "DIVERSION BRANCH" },

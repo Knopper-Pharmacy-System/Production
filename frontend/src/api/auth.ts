@@ -1,6 +1,5 @@
 // src/api/auth.ts
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
+import { API_BASE_URL } from "./baseUrl";
 
 export type LoginPayload = {
   username: string;
@@ -42,6 +41,13 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     return data as LoginResponse;
   } catch (err: any) {
     console.error("[auth.ts] Login error:", err);
-    throw new Error(err.message || "Cannot reach login server. Login online first for offline access.");
+
+    if (err?.name === "TypeError" || String(err?.message || "").toLowerCase().includes("fetch")) {
+      throw new Error(
+        `Cannot reach login server (${API_BASE_URL}). Check VITE_API_BASE_URL and ensure the API URL is reachable from this device.`
+      );
+    }
+
+    throw new Error(err.message || "Login failed.");
   }
 }

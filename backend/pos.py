@@ -1024,7 +1024,7 @@ def get_sales_report():
                 sh.trx_no,
                 sh.invoice_no,
                 COALESCE(p.product_id, 'N/A')                                        AS item_code,
-                COALESCE(p.product_name_receipt, 'Unknown Item')                     AS description,
+                COALESCE(p.product_name_receipt, CONCAT('Inventory #', sd.inventory_id)) AS description,
                 sd.price_at_sale                                                      AS selling_price,
                 sd.price_level,
                 sd.quantity_sold,
@@ -1052,6 +1052,10 @@ def get_sales_report():
             WHERE sh.branch_id = %s
               AND DATE(sh.sale_date) BETWEEN %s AND %s
               AND (sh.customer_type IS NULL OR UPPER(TRIM(sh.customer_type)) != 'VOIDED')
+                            AND COALESCE(sh.total_amount, 0) > 0
+                            AND COALESCE(sd.quantity_sold, 0) > 0
+                            AND COALESCE(sd.price_at_sale, 0) > 0
+                            AND sh.payment_method IS NOT NULL
               {cashier_filter_sql}
             ORDER BY sh.sale_date DESC, sh.trx_no ASC
         """, tuple(params))

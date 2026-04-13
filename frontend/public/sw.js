@@ -1,10 +1,8 @@
-const CACHE_NAME = 'knopper-cache-v1';
+const CACHE_NAME = 'knopper-cache-v2';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/src/main.tsx',
-  '/src/App.tsx',
-  // Add other assets
+  // Add built static assets as needed.
 ];
 
 self.addEventListener('install', (event) => {
@@ -18,5 +16,17 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
       .then((response) => response || fetch(event.request))
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
+        cacheNames
+          .filter((cacheName) => cacheName !== CACHE_NAME)
+          .map((cacheName) => caches.delete(cacheName))
+      )
+    )
   );
 });

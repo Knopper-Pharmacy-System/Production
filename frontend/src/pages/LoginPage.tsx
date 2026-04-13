@@ -227,7 +227,11 @@ function LoginPage() {
       let msg = "Login failed. Please try again.";
       if (errorMessage.includes("401") || errorMessage.toLowerCase().includes("invalid")) {
         msg = "Invalid username or password";
-      } else if (errorMessage.includes("network") || errorMessage.includes("fetch")) {
+      } else if (
+        errorMessage.toLowerCase().includes("network") ||
+        errorMessage.toLowerCase().includes("fetch") ||
+        errorMessage.toLowerCase().includes("cannot reach login server")
+      ) {
         msg = "Cannot connect to server. Please check your connection.";
       }
       showToast(msg);

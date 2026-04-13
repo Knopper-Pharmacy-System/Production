@@ -4,6 +4,7 @@ import AdminSidebar from "../../components/admin/AdminSidebar";
 import AdminHeader from "../../components/admin/AdminHeader";
 import AdminFooter from "../../components/admin/AdminFooter";
 import { getToken } from "../../hooks/useAuth";
+import { API_BASE_URL } from "../../api/baseUrl";
 
 type DailySalesResponse = {
   report_date: string;
@@ -45,8 +46,6 @@ type ReceiptResponse = {
   };
 };
 
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 const PANEL_CARD_STYLE = { background: "linear-gradient(180deg, rgba(250,252,255,0.98) 0%, rgba(233,240,253,0.95) 100%)", border: "1px solid rgba(77,108,196,0.22)", boxShadow: "0 18px 48px rgba(1,24,84,0.16), inset 0 1px 0 rgba(255,255,255,0.88)" };
 const METRIC_CARD_STYLE = { background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(233,241,255,0.96) 100%)", border: "1px solid rgba(77,108,196,0.24)", boxShadow: "0 18px 42px rgba(1,24,84,0.18), inset 0 1px 0 rgba(255,255,255,0.88)" };
 const TABLE_CARD_STYLE = { border: "1px solid rgba(115,139,205,0.24)", background: "linear-gradient(180deg, #ffffff 0%, #f4f7ff 100%)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 28px rgba(11,37,97,0.09)" };

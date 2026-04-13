@@ -134,8 +134,15 @@ export type DepartmentBreakdownPoint = {
   value: number;
 };
 
+export type HourlyTrendPoint = {
+  hour: number;
+  grossSales: number;
+  transactionCount: number;
+};
+
 export type OverviewCharts = {
   salesTrend: SalesTrendPoint[];
+  hourlyTrend: HourlyTrendPoint[];
   topProducts: TopProductPoint[];
   departmentBreakdown: DepartmentBreakdownPoint[];
 };

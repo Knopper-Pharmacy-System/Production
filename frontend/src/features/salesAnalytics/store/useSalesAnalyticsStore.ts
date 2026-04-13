@@ -100,6 +100,7 @@ const emptyInsights: QuickInsights = {
 
 const emptyCharts: OverviewCharts = {
   salesTrend: [],
+  hourlyTrend: [],
   topProducts: [],
   departmentBreakdown: [],
 };
@@ -919,6 +920,26 @@ export const useSalesAnalyticsStore = create<SalesAnalyticsState>()(
             trendByDate.set(row.date, current);
           });
 
+          const hourlyTrend = new Map<number, { grossSales: number; transactionCount: number }>();
+          for (let h = 0; h < 24; h++) {
+            hourlyTrend.set(h, { grossSales: 0, transactionCount: 0 });
+          }
+          const txByHour = new Map<number, Set<string>>();
+          for (let h = 0; h < 24; h++) {
+            txByHour.set(h, new Set<string>());
+          }
+          salesRows.forEach((row) => {
+            const hour = Math.min(23, Math.max(0, row.hour));
+            const current = hourlyTrend.get(hour) ?? { grossSales: 0, transactionCount: 0 };
+            current.grossSales += row.grossSales;
+            const txSet = txByHour.get(hour) ?? new Set<string>();
+            if (row.transactionNo) {
+              txSet.add(row.transactionNo);
+            }
+            txByHour.set(hour, txSet);
+            hourlyTrend.set(hour, current);
+          });
+
           const topProductsByQty = new Map<string, number>();
           salesRows.forEach((row) => {
             const label = row.description || row.itemCode || "Unknown item";
@@ -943,6 +964,13 @@ export const useSalesAnalyticsStore = create<SalesAnalyticsState>()(
             salesTrend: Array.from(trendByDate.entries())
               .map(([date, value]) => ({ date, ...value }))
               .sort((a, b) => (a.date > b.date ? 1 : -1)),
+            hourlyTrend: Array.from(hourlyTrend.entries())
+              .map(([hour, value]) => ({
+                hour,
+                grossSales: value.grossSales,
+                transactionCount: txByHour.get(hour)?.size ?? 0,
+              }))
+              .sort((a, b) => a.hour - b.hour),
             topProducts: Array.from(topProductsByQty.entries())
               .map(([item, qtySold]) => ({ item, qtySold }))
               .sort((a, b) => b.qtySold - a.qtySold)

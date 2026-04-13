@@ -82,6 +82,14 @@ export default function OverviewDashboard() {
       }))
     : [];
 
+  const safeHourlyTrend = Array.isArray(charts.hourlyTrend)
+    ? charts.hourlyTrend.map((point: any) => ({
+        hour: toNumericValue(point?.hour) || 0,
+        grossSales: toNumericValue(point?.grossSales),
+        transactionCount: toNumericValue(point?.transactionCount),
+      }))
+    : [];
+
   const safeTopProducts = Array.isArray(charts.topProducts)
     ? charts.topProducts.map((point: TopProductPoint) => ({
         item: String(point?.item ?? "Unknown item"),
@@ -178,6 +186,32 @@ export default function OverviewDashboard() {
           </div>
         </article>
       </div>
+
+      <article className="rounded-2xl p-4" style={MANAGER_PANEL_SOFT_STYLE}>
+        <p className="text-sm font-semibold text-slate-900">Hourly gross sales trend</p>
+        <p className="text-xs text-slate-600">Sales value by hour of day</p>
+        <div className="mt-3 h-64 w-full">
+          <ResponsiveContainer>
+            <BarChart data={safeHourlyTrend}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.24)" />
+              <XAxis 
+                dataKey="hour" 
+                tick={{ fill: "#475569", fontSize: 11 }}
+                tickFormatter={(hour: number) => `${String(hour).padStart(2, "0")}:00`}
+              />
+              <YAxis tick={{ fill: "#475569", fontSize: 11 }} />
+              <Tooltip 
+                formatter={(value: unknown) => money(toNumericValue(value))}
+                labelFormatter={(label: any) => {
+                  const hour = Number(label);
+                  return Number.isFinite(hour) ? `${String(hour).padStart(2, "0")}:00` : String(label);
+                }}
+              />
+              <Bar dataKey="grossSales" name="Gross Sales" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </article>
 
       <div className="grid gap-3 lg:grid-cols-2">
         <article className="rounded-2xl p-4" style={MANAGER_PANEL_SOFT_STYLE}>

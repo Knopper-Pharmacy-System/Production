@@ -32,7 +32,7 @@ const ROUTE_MAP: Record<string, string> = {
   Inventory: "/admin/inventory",
   "View Inventory": "/admin/inventory",
   "Stock Transfer": "/admin/stock-transfer",
-  "Sales Reports": "/admin/sales-reports",
+  "Sales Reports": "/admin/sales-analytics",
   Branches: "/admin/branches",
   Products: "/admin/products",
   Users: "/admin/users",
@@ -246,6 +246,7 @@ export default function AdminSidebar({
   const handleLogout = () => {
     console.log("Logging out...");
     logout();
+    navigate("/");
     onClose();
   };
 

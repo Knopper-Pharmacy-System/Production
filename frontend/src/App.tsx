@@ -16,19 +16,29 @@ import AdminPurchaseOrderListPage from "./pages/admin/AdminPurchaseOrderListPage
 import AdminPurchaseOrderDetailPage from "./pages/admin/AdminPurchaseOrderDetailPage";
 import AdminReceiveDeliveryPage from "./pages/admin/AdminReceiveDeliveryPage";
 import AdminStockTransfersPage from "./pages/admin/AdminStockTransfersPage";
+import AdminSalesAnalytics from "./pages/admin/AdminSalesAnalytics";
+import ManagerDashboardPage from "./pages/manager/ManagerDashboardPage";
+import ManagerBranchesPage from "./pages/manager/ManagerBranchesPage";
+import ManagerUploadHistoryPage from "./pages/manager/ManagerUploadHistoryPage";
+import ManagerCashiersPage from "./pages/manager/ManagerCashiersPage";
+import ManagerSettingsPage from "./pages/manager/ManagerSettingsPage";
+import ManagerUploadReportsPage from "./pages/manager/ManagerUploadReportsPage";
+import ManagerProductCatalogPage from "./pages/manager/ManagerProductCatalogPage";
+import ManagerInventoryInsightsPage from "./pages/manager/ManagerInventoryInsightsPage";
 import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
 import "./App.css";
 
 import AdminInventoryPage from "./pages/admin/AdminInventoryPage";
 
-type AllowedRole = "admin" | "cashier" | "staff" | "omvb_manager";
+type AllowedRole = "admin" | "cashier" | "staff" | "manager";
 
 const normalizeRole = (role: string): AllowedRole | "" => {
   const normalized = role.trim().toLowerCase();
   if (normalized === "admin") return "admin";
   if (normalized === "cashier") return "cashier";
   if (normalized === "staff") return "staff";
-  if (normalized === "omvb_manager") return "omvb_manager";
+  if (normalized === "manager") return "manager";
+  if (normalized === "omvb_manager") return "manager"; // Map old role to new
   return "";
 };
 
@@ -40,8 +50,8 @@ const roleHomePath = (role: string) => {
       return "/pos";
     case "staff":
       return "/staff";
-    case "omvb_manager":
-      return "/inv-manager";
+    case "manager":
+      return "/manager";
     default:
       return "/";
   }
@@ -80,7 +90,18 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LoginPage />} />
+        {/* Root route: show login for unauthenticated, redirect authenticated to their dashboard */}
+        <Route
+          path="/"
+          element={
+            isAuthenticated() ? (
+              <Navigate to={roleHomePath(getStoredRole())} replace />
+            ) : (
+              <LoginPage />
+            )
+          }
+        />
+        <Route path="/login" element={<LoginPage />} />
         <Route
           path="/admin"
           element={
@@ -162,6 +183,14 @@ function App() {
           }
         />
         <Route
+          path="/admin/sales-analytics"
+          element={
+            <ProtectedRoute expectedRole="admin">
+              <AdminSalesAnalytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/admin/sales-reports"
           element={
             <ProtectedRoute expectedRole="admin">
@@ -219,12 +248,84 @@ function App() {
           }
         />
         <Route
-          path="/inv-manager"
+          path="/manager"
           element={
-            <ProtectedRoute expectedRole="omvb_manager">
-              <RolePage title="Inventory Manager Interface" />
+            <ProtectedRoute expectedRole="manager">
+              <ManagerDashboardPage />
             </ProtectedRoute>
           }
+        />
+        <Route
+          path="/manager/upload-reports"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerUploadReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manager/excel-uploader"
+          element={<Navigate to="/manager/upload-reports" replace />}
+        />
+        <Route
+          path="/manager/product-catalog"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerProductCatalogPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manager/inventory-insights"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerInventoryInsightsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manager/products"
+          element={<Navigate to="/manager" replace />}
+        />
+        <Route
+          path="/manager/sales-reports"
+          element={<Navigate to="/manager" replace />}
+        />
+        <Route
+          path="/manager/branches"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerBranchesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manager/upload-history"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerUploadHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manager/cashiers"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerCashiersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manager/settings"
+          element={
+            <ProtectedRoute expectedRole="manager">
+              <ManagerSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inv-manager"
+          element={<Navigate to="/manager" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

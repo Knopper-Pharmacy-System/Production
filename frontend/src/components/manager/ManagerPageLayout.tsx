@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import AdminHeader from "../admin/AdminHeader";
+import AdminFooter from "../admin/AdminFooter";
 import ManagerSidebar from "./ManagerSidebar";
 import { useSalesAnalyticsStore } from "../../features/salesAnalytics/store/useSalesAnalyticsStore";
 import DateRangeFilter from "../../features/salesAnalytics/components/DateRangeFilter";
@@ -45,13 +46,13 @@ export default function ManagerPageLayout({
       className="relative min-h-screen w-full overflow-x-hidden overflow-y-auto"
       style={{
         background:
-          "radial-gradient(circle at top left, rgba(59,130,246,0.2) 0%, transparent 28%), radial-gradient(circle at top right, rgba(30,64,175,0.24) 0%, transparent 34%), linear-gradient(180deg, #0f172a 0%, #111f3d 46%, #10244b 100%)",
+          "radial-gradient(circle at top left, rgba(14,70,196,0.18) 0%, transparent 26%), radial-gradient(circle at top right, rgba(30,64,175,0.22) 0%, transparent 34%), linear-gradient(180deg, #081733 0%, #0d2a59 46%, #102f66 100%)",
       }}
     >
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-96"
         style={{
-          background: "linear-gradient(180deg, rgba(148,163,184,0.14) 0%, rgba(148,163,184,0) 100%)",
+          background: "linear-gradient(180deg, rgba(148,163,184,0.16) 0%, rgba(148,163,184,0) 100%)",
         }}
       />
       <div
@@ -93,6 +94,8 @@ export default function ManagerPageLayout({
         {showDateFilter ? <DateRangeFilter /> : null}
 
         {children}
+
+        <AdminFooter />
       </div>
     </div>
   );

@@ -5,7 +5,14 @@ export interface Branch {
   branch_id: number;
   branch_name: string;
   branch_code: string;
+  branch_address?: string;
 }
+
+type PublicBranchesResponse = {
+  status: string;
+  count: number;
+  branches: Branch[];
+};
 
 export interface BranchSummary {
   branch_id: number;
@@ -44,6 +51,25 @@ export async function getAllBranches(): Promise<Branch[]> {
   }
 
   return response.json();
+}
+
+export async function getPublicBranches(): Promise<Branch[]> {
+  const response = await fetch(`${API_BASE_URL}/public-branches`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch public branches: ${response.status}`);
+  }
+
+  const data = (await response.json()) as PublicBranchesResponse | Branch[];
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data.branches ?? [];
 }
 
 export async function getBranchSummary(): Promise<BranchSummary[]> {

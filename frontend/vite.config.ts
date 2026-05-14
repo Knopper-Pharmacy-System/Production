@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "https://web-production-783f2.up.railway.app",
+        target: "https://knopper.up.railway.app",
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/api/, ""),

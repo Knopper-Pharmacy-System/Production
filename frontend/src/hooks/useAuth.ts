@@ -36,7 +36,9 @@ export function clearTerminalLockState() {
 export function useAuth() {
   const login = (token: string, role: string, password?: string) => {
     localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(ROLE_KEY, role);
+    const normalized = (role || "").trim().toLowerCase();
+    const storedRole = normalized === "staff" ? "cashier" : normalized === "omvb_manager" ? "manager" : normalized || role;
+    localStorage.setItem(ROLE_KEY, storedRole);
     clearTerminalLockState();
     if (typeof password === "string") {
       setSessionLoginPassword(password);

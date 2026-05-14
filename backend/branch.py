@@ -5,6 +5,56 @@ from extensions import mysql
 # Define the blueprint
 branch_bp = Blueprint('branch',__name__)
 
+
+# GET PUBLIC BRANCHES (for login page)
+@branch_bp.route('/public-branches', methods=['GET'])
+def get_public_branches():
+    """
+    Retrieve branches without authentication for pre-login branch selection.
+    Includes branch_address when that column exists in the database.
+    """
+    cur = mysql.connection.cursor()
+    try:
+        cur.execute("SHOW COLUMNS FROM BRANCHES LIKE 'branch_address'")
+        has_branch_address = cur.fetchone() is not None
+
+        if has_branch_address:
+            cur.execute("""
+                SELECT branch_id, branch_name, branch_code, branch_address
+                FROM BRANCHES
+                ORDER BY branch_id
+            """)
+        else:
+            cur.execute("""
+                SELECT branch_id, branch_name, branch_code
+                FROM BRANCHES
+                ORDER BY branch_id
+            """)
+
+        branches = cur.fetchall()
+
+        branch_list = []
+        for branch in branches:
+            branch_item = {
+                "branch_id": branch[0],
+                "branch_name": branch[1],
+                "branch_code": branch[2]
+            }
+            if has_branch_address:
+                branch_item["branch_address"] = branch[3] if branch[3] else ""
+            branch_list.append(branch_item)
+
+        return jsonify({
+            "status": "success",
+            "count": len(branch_list),
+            "branches": branch_list
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+
 # CREATE NEW BRANCH
 @branch_bp.route('/create-branch', methods=['POST'])
 @jwt_required()

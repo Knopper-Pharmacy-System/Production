@@ -1,4 +1,4 @@
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
+export const PROD_API_BASE_URL = "https://knopper.up.railway.app";
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");

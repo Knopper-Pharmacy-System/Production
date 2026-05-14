@@ -43,7 +43,7 @@ import ClosingBalanceModal from "../../components/pos/ClosingBalanceModal";
 import CheckoutModal from "../../components/pos/CheckoutModal";
 import TerminalLockModal from "../../components/pos/TerminalLockModal";
 
-const PROD_API_BASE_URL = "https://web-production-783f2.up.railway.app";
+const PROD_API_BASE_URL = "https://knopper.up.railway.app";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
 
 const CATEGORIES = [
@@ -1380,24 +1380,64 @@ function CashierPosPage() {
 
   const [inventoryCache, setInventoryCache] = useState<any[]>([]);
 
-  // Refresh inventory cache whenever modal opens
+  // Refresh inventory cache whenever modal opens (fetch fresh data from backend)
   useEffect(() => {
     const loadFullInventory = async () => {
       if (!showInventoryModal) return;
       setIsLoading(true);
 
       try {
-        const cached = await db.inventory.toArray();
-        setInventoryCache(cached);
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch fresh inventory from backend
+        let allItems: any[] = [];
+        let offset = 0;
+        const limit = 500;
+        const maxPages = 25;
+        let pageCount = 0;
+
+        while (true) {
+          if (pageCount >= maxPages) break;
+          const res = await fetch(`${API_BASE_URL}/inventory/branch/${currentBranchId}?limit=${limit}&offset=${offset}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (!res.ok) break;
+          const data = await res.json();
+          if (!Array.isArray(data) || data.length === 0) break;
+
+          allItems.push(...data);
+          pageCount += 1;
+          offset += limit;
+          if (data.length < limit) break;
+        }
+
+        // Update IndexedDB cache with fresh data
+        if (allItems.length > 0) {
+          await db.inventory.clear();
+          await db.inventory.bulkAdd(allItems.map(i => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
+        }
+
+        setInventoryCache(allItems.length > 0 ? allItems : await db.inventory.toArray());
         setIsLoading(false);
       } catch (err) {
-        console.error('Failed to load inventory cache:', err);
+        console.error('Failed to load inventory from backend:', err);
+        // Fallback to local cache
+        try {
+          const cached = await db.inventory.toArray();
+          setInventoryCache(cached);
+        } catch (fallbackErr) {
+          console.error('Failed to load inventory cache:', fallbackErr);
+        }
         setIsLoading(false);
       }
     };
 
     loadFullInventory();
-  }, [showInventoryModal]);
+  }, [showInventoryModal, currentBranchId]);
 
   // Fast local search with useMemo
   const filteredInventory = useMemo(() => {

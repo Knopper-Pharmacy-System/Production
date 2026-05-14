@@ -73,13 +73,16 @@ def get_branch_inventory(branch_id):
                 "inventory_id": item[0],
                 "product_id": item[1],
                 "product_name": item[2],
+                "product_name_official": item[2],
                 "category": item[3],
+                "category_type": item[3],
                 "batch_number": item[4],
                 # Dates need to be converted to strings for JSON formatting
                 "expiry_date": item[5].strftime('%Y-%m-%d') if item[5] else None,
                 "quantity_on_hand": item[6],
                 "price": float(item[7]) if item[7] else 0.00,
                 "barcode": item[8],
+                "barcode_value": item[8],
                 "gondola_code": item[9]
             })
 

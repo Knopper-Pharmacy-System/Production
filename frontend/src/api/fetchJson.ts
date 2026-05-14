@@ -1,7 +1,5 @@
 import { API_BASE_URL } from "./baseUrl";
 
-type JsonPrimitive = string | number | boolean | null;
-
 function formatErrorMessage(message: string, status?: number): string {
   return status ? `${message} (HTTP ${status})` : message;
 }

@@ -24,7 +24,7 @@ import ManagerSettingsPage from "./pages/manager/ManagerSettingsPage";
 import ManagerUploadReportsPage from "./pages/manager/ManagerUploadReportsPage";
 import ManagerProductCatalogPage from "./pages/manager/ManagerProductCatalogPage";
 import ManagerInventoryInsightsPage from "./pages/manager/ManagerInventoryInsightsPage";
-import { getStoredRole, isAuthenticated, logout } from "./hooks/useAuth";
+import { getStoredRole, isAuthenticated } from "./hooks/useAuth";
 import "./App.css";
 
 import AdminInventoryPage from "./pages/admin/AdminInventoryPage";
@@ -78,17 +78,6 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
-function RolePage({ title }: { title: string }) {
-  return (
-    <main className="role-page">
-      <h1>{title}</h1>
-      <p>Logged in as: {getStoredRole()}</p>
-      <button type="button" onClick={logout}>
-        Logout
-      </button>
-    </main>
-  );
-}
 
 function App() {
   return (

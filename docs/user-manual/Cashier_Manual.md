@@ -71,4 +71,28 @@ This manual explains how to use the Point-of-Sale (POS) interface for cashiers: 
 - IT support: [enter contact]
 
 ---
+
+## Annotated UI Walkthrough
+
+Follow these steps with screenshots (placeholders below) to locate UI elements quickly.
+
+- **Login screen**: enter username and password, then press `Sign In`. (Screenshot: `images/cashier-login.png`)
+- **Product search / barcode input**: use the top search field or scanner. (Screenshot: `images/cashier-search.png`)
+- **Cart area**: edit quantities, apply discounts, or remove items. (Screenshot: `images/cashier-cart.png`)
+- **Payment modal**: choose payment type and complete sale. (Screenshot: `images/cashier-payment.png`)
+
+Place screenshot files in `docs/user-manual/images/` with matching names. If you want, I can capture these from your running app and embed them.
+
+## Store Policies & Contacts (Fill these according to your store)
+
+- **Price override limit**: Enter maximum amount or percentage a cashier may override without manager approval.
+- **Refund approval limit**: Enter monetary limit requiring manager approval.
+- **Discount policy**: Describe allowed discounts and whether manager approval is required.
+- **Receipt printing**: When to print vs email receipts.
+- **Escalation contacts**:
+	- Local manager: [name / extension]
+	- Store manager (escalation): [name / contact]
+	- IT support: [contact]
+
+---
 _Last updated: May 14, 2026_

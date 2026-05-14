@@ -35,6 +35,7 @@ CREATE TABLE USERS (
     user_id INT PRIMARY KEY,
     branch_id INT COMMENT 'Home Branch',
     username VARCHAR(100),
+    password_hash VARCHAR(255) COMMENT 'Bcrypt hashed password',
     full_name VARCHAR(255),
     role ENUM('admin', 'manager', 'staff'),
     is_active BOOLEAN,

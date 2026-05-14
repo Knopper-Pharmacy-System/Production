@@ -1,4 +1,3 @@
-import AdminFooter from "../../components/admin/AdminFooter";
 import ManagerPageLayout from "../../components/manager/ManagerPageLayout";
 import OverviewDashboard from "../../features/salesAnalytics/components/OverviewDashboard";
 import DateRangeFilter from "../../features/salesAnalytics/components/DateRangeFilter";
@@ -6,7 +5,6 @@ import { useSalesAnalyticsStore } from "../../features/salesAnalytics/store/useS
 
 export default function ManagerDashboardPage() {
   const hasData = useSalesAnalyticsStore((state) => state.salesRows.length > 0);
-  const dateFilterLabel = useSalesAnalyticsStore((state) => state.getDateFilterLabel());
 
   return (
     <ManagerPageLayout
@@ -16,8 +14,7 @@ export default function ManagerDashboardPage() {
       showDateFilter={false}
     >
       {hasData && (
-        <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm font-medium text-slate-700">{dateFilterLabel}</p>
+        <div className="mb-4 w-full">
           <DateRangeFilter />
         </div>
       )}
@@ -37,8 +34,6 @@ export default function ManagerDashboardPage() {
       )}
 
       <OverviewDashboard />
-
-      <AdminFooter />
     </ManagerPageLayout>
   );
 }

@@ -12,11 +12,9 @@ export default function ManagerProductCatalogPage() {
     >
       <AnalyticsErrorBoundary>
         <section
-          className="rounded-3xl p-4 sm:p-5"
+          className="rounded-[24px] border border-white/70 bg-white/95 p-4 sm:p-5 shadow-[0_18px_42px_rgba(1,24,84,0.14)]"
           style={{
-            background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
-            border: "1px solid rgba(203, 213, 225, 0.9)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.92), 0 10px 22px rgba(15, 23, 42, 0.16)",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(243,248,255,0.97) 100%)",
           }}
         >
           <ProductCatalogView />

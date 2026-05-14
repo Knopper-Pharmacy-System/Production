@@ -12,13 +12,13 @@ export default function ManagerUploadHistoryPage() {
       title="Upload History"
       subtitle="Review every upload by branch, file type, and row count. Click an entry to restore it into the active branch."
     >
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
+      <section className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-[0_18px_42px_rgba(1,24,84,0.14)]">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">History log</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-800">History log</p>
             <h2 className="mt-1 text-2xl font-bold text-slate-900">All uploads</h2>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+          <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
             <History size={16} />
             {uploads.length} record{uploads.length === 1 ? "" : "s"}
           </div>
@@ -31,7 +31,7 @@ export default function ManagerUploadHistoryPage() {
                 key={upload.id}
                 type="button"
                 onClick={() => restoreUpload(upload.id)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
+                className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>

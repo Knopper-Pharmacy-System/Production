@@ -142,8 +142,8 @@ export default function ManagerCashiersPage() {
       subtitle="Manage branch staff accounts, assign roles, and track active vs inactive users."
     >
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Add user</p>
+        <section className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-[0_18px_42px_rgba(1,24,84,0.14)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-800">Add user</p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">Create staff account</h2>
           <p className="mt-2 text-sm text-slate-600">
             Accounts are saved offline in your browser and grouped by branch.
@@ -203,7 +203,7 @@ export default function ManagerCashiersPage() {
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1E40AF] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#3B82F6]"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0e46c4] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1a64de]"
             >
               <UserPlus size={16} />
               Add Staff Member
@@ -215,13 +215,13 @@ export default function ManagerCashiersPage() {
           ) : null}
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.12)]">
+        <section className="rounded-[24px] border border-white/70 bg-white/95 p-5 shadow-[0_18px_42px_rgba(1,24,84,0.14)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Staff registry</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-800">Staff registry</p>
               <h2 className="mt-1 text-2xl font-bold text-slate-900">Team members</h2>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
               <Users size={16} />
               {filteredMembers.length} total • {activeCount} active
             </div>
@@ -234,14 +234,14 @@ export default function ManagerCashiersPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search by name, username, or role"
-                className="w-full rounded-2xl border border-slate-300 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white"
+                className="w-full rounded-2xl border border-slate-300 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
               />
             </label>
 
             <select
               value={branchFilter}
               onChange={(event) => setBranchFilter(event.target.value)}
-              className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white"
+              className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
             >
               <option value="all">All branches</option>
               {branches.map((branch) => (
@@ -254,7 +254,7 @@ export default function ManagerCashiersPage() {
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as "all" | StaffStatus)}
-              className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white"
+              className="rounded-2xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
             >
               <option value="all">All status</option>
               <option value="Active">Active</option>
@@ -267,7 +267,7 @@ export default function ManagerCashiersPage() {
               filteredMembers.map((member) => (
                 <article
                   key={member.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>

@@ -70,4 +70,28 @@ This manual covers manager responsibilities: oversight of daily operations, appr
 - IT Support: [enter contact]
 
 ---
+
+## Annotated UI Walkthrough
+
+Key manager screens with suggested screenshots (placeholders):
+
+- **Manager Dashboard (overview)**: Widgets for sales, low-stock, top products. (Screenshot: `images/manager-dashboard.png`)
+- **Approvals panel**: Shows pending `Manager Auth` requests and refund approvals. (Screenshot: `images/manager-approvals.png`)
+- **Inventory page**: Filters, search, import controls, and adjustment actions. (Screenshot: `images/manager-inventory.png`)
+- **Purchase Orders**: Create, send, and receive deliveries. (Screenshot: `images/manager-po.png`)
+
+Place screenshots in `docs/user-manual/images/` and name files accordingly. I can capture these from a running environment on request.
+
+## Store Policies & Settings (Fill in specifics)
+
+- **Manager approval thresholds**: e.g., price override up to X, refunds over Y require manager sign-off.
+- **Inventory reorder points**: Suggested min/max reorder levels per category.
+- **Receiving policy**: How to verify deliveries and reconcile with POs.
+- **User provisioning**: Steps to onboard a cashier or manager and required documents.
+- **Escalation contacts**:
+	- Regional manager: [name / contact]
+	- Finance / Accounting: [name / contact]
+	- IT Support: [contact]
+
+---
 _Last updated: May 14, 2026_

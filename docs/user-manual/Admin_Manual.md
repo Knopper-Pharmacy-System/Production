@@ -63,4 +63,28 @@ This manual is for system administrators responsible for user roles, system conf
 - Legal/Compliance: [enter contact]
 
 ---
+
+## Annotated UI Walkthrough
+
+Suggested admin screens with screenshot placeholders:
+
+- **User & Roles**: Create and manage user accounts and permissions. (Screenshot: `images/admin-users.png`)
+- **System Settings**: Global settings, payment gateways, and integrations. (Screenshot: `images/admin-settings.png`)
+- **Database & Backups**: Backup controls and restore procedures. (Screenshot: `images/admin-db.png`)
+- **Monitoring & Logs**: Access logs and alerts dashboard. (Screenshot: `images/admin-logs.png`)
+
+Store the screenshots in `docs/user-manual/images/` and name them as above. I can capture and embed images if you provide a running environment or screenshots.
+
+## Store Policies & Admin Checklist
+
+- **User provisioning checklist**: Required documents and approvals for creating admin/manager accounts.
+- **Backup schedule**: Frequency, retention policy, and offsite storage locations.
+- **Security patching schedule**: Frequency and responsible person/team.
+- **Change management**: How deployments and major changes are approved and communicated.
+- **Escalation contacts**:
+	- Head of IT / DevOps: [name / contact]
+	- Security Officer: [name / contact]
+	- Legal/Compliance: [contact]
+
+---
 _Last updated: May 14, 2026_

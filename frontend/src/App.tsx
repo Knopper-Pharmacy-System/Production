@@ -48,7 +48,7 @@ const roleHomePath = (role: string) => {
     case "cashier":
       return "/pos";
     case "staff":
-      return "/staff";
+      return "/pos";
     case "manager":
       return "/manager";
     default:
@@ -67,6 +67,11 @@ function ProtectedRoute({
 
   const currentRole = normalizeRole(getStoredRole());
   if (currentRole !== expectedRole) {
+    // Allow `staff` to access cashier POS routes even though their role is "staff"
+    if (expectedRole === "cashier" && currentRole === "staff") {
+      return <>{children}</>;
+    }
+
     return <Navigate to={roleHomePath(currentRole)} replace />;
   }
 
@@ -238,14 +243,6 @@ function App() {
           }
         />
         <Route path="/cashier" element={<Navigate to="/pos" replace />} />
-        <Route
-          path="/staff"
-          element={
-            <ProtectedRoute expectedRole="staff">
-              <RolePage title="Staff Interface" />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/manager"
           element={

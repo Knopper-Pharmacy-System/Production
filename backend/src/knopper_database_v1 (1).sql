@@ -1,6 +1,3 @@
-create database Knopper_Database;
-use Knopper_Database;
--- show databases;
 
 
 SET FOREIGN_KEY_CHECKS = 0;

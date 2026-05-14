@@ -1,5 +1,5 @@
 // src/api/dashboard.ts
-import { API_BASE_URL } from "./baseUrl";
+// import { API_BASE_URL } from "./baseUrl"; // kept for compatibility; fetchJson builds from API_BASE_URL
 
 export interface DashboardMetrics {
   lowStockCount: number;
@@ -35,96 +35,57 @@ export interface StockDistributionData {
 }
 
 export async function getDashboardMetrics(branchId: number): Promise<DashboardMetrics> {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw new Error('No authentication token found');
+  const { fetchJson, getTokenOrThrow } = await import("./fetchJson");
+  const token = getTokenOrThrow();
 
-  const response = await fetch(`${API_BASE_URL}/dashboard/metrics/${branchId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return fetchJson<DashboardMetrics>({
+    path: `/dashboard/metrics/${branchId}`,
+    method: "GET",
+    token,
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch dashboard metrics: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function getLowStockItems(branchId: number): Promise<LowStockItem[]> {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw new Error('No authentication token found');
+  const { fetchJson, getTokenOrThrow } = await import("./fetchJson");
+  const token = getTokenOrThrow();
 
-  const response = await fetch(`${API_BASE_URL}/dashboard/low-stock/${branchId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return fetchJson<LowStockItem[]>({
+    path: `/dashboard/low-stock/${branchId}`,
+    method: "GET",
+    token,
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch low stock items: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function getNearExpiryItems(branchId: number): Promise<NearExpiryItem[]> {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw new Error('No authentication token found');
+  const { fetchJson, getTokenOrThrow } = await import("./fetchJson");
+  const token = getTokenOrThrow();
 
-  const response = await fetch(`${API_BASE_URL}/dashboard/near-expiry/${branchId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return fetchJson<NearExpiryItem[]>({
+    path: `/dashboard/near-expiry/${branchId}`,
+    method: "GET",
+    token,
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch near expiry items: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function getSalesTrend(branchId: number, period: 'week' | 'month' | 'year' = 'week'): Promise<SalesTrendData[]> {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw new Error('No authentication token found');
+  const { fetchJson, getTokenOrThrow } = await import("./fetchJson");
+  const token = getTokenOrThrow();
 
-  const response = await fetch(`${API_BASE_URL}/dashboard/sales-trend/${branchId}?period=${period}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return fetchJson<SalesTrendData[]>({
+    path: `/dashboard/sales-trend/${branchId}`,
+    method: "GET",
+    token,
+    query: { period },
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch sales trend: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function getStockDistribution(branchId: number): Promise<StockDistributionData[]> {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw new Error('No authentication token found');
+  const { fetchJson, getTokenOrThrow } = await import("./fetchJson");
+  const token = getTokenOrThrow();
 
-  const response = await fetch(`${API_BASE_URL}/dashboard/stock-distribution/${branchId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  return fetchJson<StockDistributionData[]>({
+    path: `/dashboard/stock-distribution/${branchId}`,
+    method: "GET",
+    token,
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch stock distribution: ${response.status}`);
-  }
-
-  return response.json();
 }

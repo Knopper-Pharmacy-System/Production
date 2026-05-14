@@ -29,7 +29,9 @@ CORS(app, resources={r"/*": {
     "origins": [
         "https://knopper-deployed.up.railway.app",  # Your Frontend URL
         "http://localhost:5173",                   # Local Vite development
-        "http://127.0.0.1:5173"
+        "http://localhost:5175",                   # Local Vite development (alternate port)
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5175"
     ],
     "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"]

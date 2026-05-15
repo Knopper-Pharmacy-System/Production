@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Plus } from 'lucide-react';
+import { API_BASE_URL } from '../../api/baseUrl';
 import { db } from '../../features/pos/api/db';
 
 function EditablePriceCell({ itemId, price, updateCartItemPrice }: { itemId: number; price: number; updateCartItemPrice: (id: number, price: number) => void }) {
@@ -46,6 +47,12 @@ interface SuggestionItem {
   stock: number;
 }
 
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  'BMC MAIN': 1,
+  'DIVERSION BRANCH': 2,
+  'PANGANIBAN BRANCH': 3,
+};
+
 const getInventoryBarcodeValue = (item: {
   qr?: string;
   qr_code?: string;
@@ -86,6 +93,41 @@ const getInventoryBarcodeValue = (item: {
   }
 
   return '';
+};
+
+const getCurrentBranchIdFromToken = () => {
+  try {
+    const token = localStorage.getItem('access_token');
+    if (!token) return 1;
+
+    const payload = token.split('.')[1];
+    if (!payload) return 1;
+
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddingLength = (4 - (normalized.length % 4 || 4)) % 4;
+    const padded = normalized + '='.repeat(paddingLength);
+    const decoded = JSON.parse(atob(padded));
+    const branchId = Number(decoded?.branch);
+    return Number.isFinite(branchId) && branchId > 0 ? branchId : 1;
+  } catch {
+    return 1;
+  }
+};
+
+const getCurrentBranchIdFromLoginBranch = () => {
+  const branchName = localStorage.getItem('lastBranch') || '';
+  const normalized = branchName.trim().toUpperCase();
+  return BRANCH_ID_BY_NAME[normalized] || getCurrentBranchIdFromToken();
+};
+
+const normalizeInventoryResponse = (payload: unknown): any[] => {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object') {
+    const record = payload as { products?: unknown; data?: unknown };
+    if (Array.isArray(record.products)) return record.products;
+    if (Array.isArray(record.data)) return record.data;
+  }
+  return [];
 };
 
 interface CartDisplayProps {
@@ -135,19 +177,71 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [inventoryCache, setInventoryCache] = useState<any[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const cacheLoadedRef = useRef(false);
 
-  // Load inventory once on mount
+  // Load inventory from the backend first, then fall back to IndexedDB.
   useEffect(() => {
     const loadInventory = async () => {
-      if (cacheLoadedRef.current) return;
-      cacheLoadedRef.current = true;
       setIsSearching(true);
+
       try {
+        const token = localStorage.getItem('access_token');
+        const branchId = getCurrentBranchIdFromLoginBranch();
+
+        if (token) {
+          let allItems: any[] = [];
+          let offset = 0;
+          const limit = 500;
+          const maxPages = 25;
+          let pageCount = 0;
+
+          while (true) {
+            if (pageCount >= maxPages) break;
+
+            const response = await fetch(`${API_BASE_URL}/inventory/branch/${branchId}?limit=${limit}&offset=${offset}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (!response.ok) break;
+
+            const data = await response.json();
+            if (!Array.isArray(data) || data.length === 0) break;
+
+            allItems.push(...data);
+            pageCount += 1;
+            offset += limit;
+
+            if (data.length < limit) break;
+          }
+
+          if (allItems.length === 0) {
+            const fallbackResponse = await fetch(`${API_BASE_URL}/inventory/products`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (fallbackResponse.ok) {
+              const fallbackPayload = await fallbackResponse.json();
+              allItems = normalizeInventoryResponse(fallbackPayload);
+            }
+          }
+
+          if (allItems.length > 0) {
+            await db.inventory.clear();
+            await db.inventory.bulkAdd(allItems.map((item) => ({ ...item, sync_status: 'synced', timestamp: Date.now() })));
+            setInventoryCache(allItems);
+            return;
+          }
+        }
+
         const items = await db.inventory.toArray();
         setInventoryCache(items);
       } catch (err) {
         console.error('Failed to load inventory:', err);
+        try {
+          const items = await db.inventory.toArray();
+          setInventoryCache(items);
+        } catch (fallbackErr) {
+          console.error('Failed to load inventory cache:', fallbackErr);
+        }
       } finally {
         setIsSearching(false);
       }
@@ -158,13 +252,42 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   // Local search with useMemo (like AdminProductsPage)
   const filteredSuggestions = useMemo(() => {
     const query = currentItemDescription.trim().toLowerCase();
-    if (!query || inventoryCache.length === 0) return [];
-    
-    return inventoryCache
+    if (inventoryCache.length === 0) return [];
+
+    const sourceItems = !query
+      ? inventoryCache
+      : inventoryCache.filter(item => {
+          const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
+          const receiptName = (item.product_name_receipt || '').toLowerCase();
+          const barcode = getInventoryBarcodeValue(item).toLowerCase();
+          const gondola = String(item.gondola_code || item.gondola || '').toLowerCase();
+          const batch = String(item.batch_number || item.batch || '').toLowerCase();
+
+          return (
+            name.includes(query) ||
+            receiptName.includes(query) ||
+            barcode.includes(query) ||
+            gondola.includes(query) ||
+            batch.includes(query)
+          );
+        });
+
+    return sourceItems
       .filter(item => {
+        if (!query) return true;
         const name = (item.product_name_official || item.product_name || item.name || '').toLowerCase();
+        const receiptName = (item.product_name_receipt || '').toLowerCase();
         const barcode = getInventoryBarcodeValue(item).toLowerCase();
-        return name.includes(query) || barcode.includes(query);
+        const gondola = String(item.gondola_code || item.gondola || '').toLowerCase();
+        const batch = String(item.batch_number || item.batch || '').toLowerCase();
+
+        return (
+          name.includes(query) ||
+          receiptName.includes(query) ||
+          barcode.includes(query) ||
+          gondola.includes(query) ||
+          batch.includes(query)
+        );
       })
       .slice(0, 8)
       .map(item => ({
@@ -179,13 +302,13 @@ const CartDisplay: React.FC<CartDisplayProps> = ({
   // Update suggestions and show dropdown
   useEffect(() => {
     const query = currentItemDescription.trim();
-    
+
     if (!query) {
-      setSuggestions([]);
-      setShowSuggestions(false);
+      setSuggestions(filteredSuggestions);
+      setShowSuggestions(filteredSuggestions.length > 0);
       return;
     }
-    
+
     setShowSuggestions(true);
     setSuggestions(filteredSuggestions);
     setHighlightIdx(0);

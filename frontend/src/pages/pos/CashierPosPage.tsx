@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import logoOutline from "../../assets/logo_outline.png";
 import bannerLogo from "../../assets/banner_logo.png";
+import { API_BASE_URL } from "../../api/baseUrl";
 import {
   clearSuspendedTransaction,
   type CompletedTransaction,
@@ -43,9 +44,6 @@ import ClosingBalanceModal from "../../components/pos/ClosingBalanceModal";
 import CheckoutModal from "../../components/pos/CheckoutModal";
 import TerminalLockModal from "../../components/pos/TerminalLockModal";
 
-const PROD_API_BASE_URL = "https://knopper.up.railway.app";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || PROD_API_BASE_URL;
-
 const CATEGORIES = [
   { value: "", label: "All" },
   { value: "MEDICINE", label: "Medicine" },
@@ -64,6 +62,11 @@ const DISCOUNT_RATES = [0, 0.20, 0.10, 0];
 const SENIOR_DISCOUNT_INDEX = 1;
 const ITEMS_PER_PAGE = 50;
 const INITIAL_SEQUENCE_NUMBER = 1;
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  "BMC MAIN": 1,
+  "DIVERSION BRANCH": 2,
+  "PANGANIBAN BRANCH": 3,
+};
 const RETURN_REASONS = [
   "Wrong Item",
   "Damaged Product",
@@ -86,6 +89,11 @@ const parseStoredSequence = (storageKey: string) => {
     : INITIAL_SEQUENCE_NUMBER;
 };
 
+const getCurrentBranchIdFromBranchName = (branchName: string) => {
+  const normalized = branchName.trim().toUpperCase();
+  return BRANCH_ID_BY_NAME[normalized] || 1;
+};
+
 const getCurrentBranchIdFromToken = () => {
   try {
     const token = localStorage.getItem("access_token");
@@ -104,6 +112,28 @@ const getCurrentBranchIdFromToken = () => {
     return 1;
   }
 };
+
+const normalizeInventoryResponse = (payload: unknown): any[] => {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    const record = payload as { products?: unknown; data?: unknown };
+    if (Array.isArray(record.products)) return record.products;
+    if (Array.isArray(record.data)) return record.data;
+  }
+  return [];
+};
+
+const normalizeInventoryRow = (item: any, fallbackIndex: number): InventoryItem => ({
+  id: item.id ?? item.inventory_id ?? item.product_id ?? fallbackIndex + 1,
+  name: getInventoryDisplayName(item),
+  productId: item.product_id || item.productId,
+  barcode: getInventoryBarcodeValue(item),
+  category: item.category || item.category_type || item.product_category || "",
+  expiry: item.expiry_date || item.expiry || null,
+  quantity: item.quantity_on_hand ?? item.quantity ?? 0,
+  price: item.price_regular || item.price || 0,
+  gondola: item.gondola_code || item.gondola || "—",
+});
 
 type CartItem = {
   id: number;
@@ -273,7 +303,10 @@ type ReadingInputState = {
 
 function CashierPosPage() {
   const currentBranchName = getCurrentBranchName();
-  const [currentBranchId] = useState<number>(() => getCurrentBranchIdFromToken());
+  const [currentBranchId] = useState<number>(() => {
+    const fromBranchName = getCurrentBranchIdFromBranchName(currentBranchName);
+    return fromBranchName || getCurrentBranchIdFromToken();
+  });
   const [currentDate, setCurrentDate] = useState("");
   const [currentTime, setCurrentTime] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -391,8 +424,8 @@ function CashierPosPage() {
   // Inventory modal
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [inventorySearch, setInventorySearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("MEDICINE");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("in-stock");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all-stock");
   const [showBarcodeColumn, setShowBarcodeColumn] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [selectedInventoryIndex, setSelectedInventoryIndex] = useState(0);
@@ -1337,6 +1370,17 @@ function CashierPosPage() {
           if (data.length < limit) break;
         }
 
+        if (allItems.length === 0) {
+          const fallbackResponse = await fetch(`${API_BASE_URL}/inventory/products`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (fallbackResponse.ok) {
+            const fallbackPayload = await fallbackResponse.json();
+            allItems = normalizeInventoryResponse(fallbackPayload);
+          }
+        }
+
         await db.inventory.clear();
         await db.inventory.bulkAdd(allItems.map(i => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
         console.log(`Loaded ${allItems.length} items in background`);
@@ -1415,12 +1459,25 @@ function CashierPosPage() {
           if (data.length < limit) break;
         }
 
+        if (allItems.length === 0) {
+          const fallbackResponse = await fetch(`${API_BASE_URL}/inventory/products`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (fallbackResponse.ok) {
+            const fallbackPayload = await fallbackResponse.json();
+            allItems = normalizeInventoryResponse(fallbackPayload);
+          }
+        }
+
         // Update IndexedDB cache with fresh data
         if (allItems.length > 0) {
           await db.inventory.clear();
           await db.inventory.bulkAdd(allItems.map(i => ({ ...i, sync_status: "synced", timestamp: Date.now() })));
         }
 
+        setInventoryItems(allItems.map((item, index) => normalizeInventoryRow(item, index)));
+        setInventoryItems(allItems.map((item, index) => normalizeInventoryRow(item, index)));
         setInventoryCache(allItems.length > 0 ? allItems : await db.inventory.toArray());
         setIsLoading(false);
       } catch (err) {
@@ -1457,7 +1514,7 @@ function CashierPosPage() {
 
     // Apply category filter
     if (selectedCategory) {
-      results = results.filter(item => matchesSelectedCategory(item.category, selectedCategory));
+      results = results.filter(item => matchesSelectedCategory(item.category || item.category_type || item.product_category, selectedCategory));
     }
 
     // Apply stock filter (only if not in search mode)
@@ -1477,7 +1534,7 @@ function CashierPosPage() {
     const pagedItems = sourceItems.slice(pageStart, pageStart + ITEMS_PER_PAGE);
 
     const displayItems = pagedItems.map(item => ({
-      id: item.id!,
+      id: item.id ?? item.inventory_id ?? item.product_id ?? Date.now(),
       name: getInventoryDisplayName(item),
       description: item.product_name_official || "",
       productId: item.product_id || item.productId,
@@ -1486,7 +1543,7 @@ function CashierPosPage() {
       quantity: item.quantity_on_hand ?? item.quantity ?? 0,
       price: item.price_regular || item.price || 0,
       gondola: item.gondola_code || item.gondola || "—",
-      category: item.category,
+      category: item.category || item.category_type || item.product_category,
     }));
 
     setInventoryItems(displayItems);
@@ -1503,7 +1560,7 @@ function CashierPosPage() {
       setCurrentPage(0);
       setInventorySearch("");
       setSelectedCategory("");
-      setStockFilter("in-stock");
+      setStockFilter("all-stock");
       setShowBarcodeColumn(false);
       setSelectedInventoryIndex(0);
       setTimeout(() => inventorySearchRef.current?.focus(), 100);
@@ -1609,7 +1666,7 @@ function CashierPosPage() {
           if (!isTypingTarget && !showInventoryModal && !isManagerModalOpen && !isLiveVoidModalOpen && !isCheckoutOpen && !isKeybindHelpOpen && !actionInputModal.isOpen && !readingInputState.isOpen) {
             e.preventDefault();
             setInventorySearch("");
-            setSelectedCategory("MEDICINE");
+            setSelectedCategory("");
             setSelectedInventoryIndex(0);
             setInventoryItems([]);
             setCurrentPage(0);

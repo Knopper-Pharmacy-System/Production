@@ -47,21 +47,21 @@ def get_branch_inventory(branch_id):
     try:
         sql = """
             SELECT 
-                bi.inventory_id,
                 p.product_id,
                 p.product_name_official,
                 p.category_type,
+                bi.inventory_id,
                 bi.batch_number,
                 bi.expiry_date,
-                bi.quantity_on_hand,
-                p.price_regular,
+                COALESCE(bi.quantity_on_hand, 0),
+                COALESCE(p.price_regular, 0),
                 pb.barcode_value,
                 g.gondola_code
-            FROM BRANCH_INVENTORY bi
-            JOIN PRODUCTS p ON bi.product_id = p.product_id
+            FROM PRODUCTS p
+            LEFT JOIN BRANCH_INVENTORY bi ON bi.product_id = p.product_id AND bi.branch_id = %s
             LEFT JOIN PRODUCT_BARCODES pb ON p.product_id = pb.product_id AND pb.is_primary = TRUE
             LEFT JOIN GONDOLAS g ON bi.gondola_id = g.gondola_id
-            WHERE bi.branch_id = %s
+            WHERE p.is_active = TRUE OR p.is_active IS NULL
             ORDER BY p.product_name_official ASC, bi.expiry_date ASC
         """
         cur.execute(sql, (branch_id,))
@@ -70,12 +70,12 @@ def get_branch_inventory(branch_id):
         inventory_list = []
         for item in inventory_items:
             inventory_list.append({
-                "inventory_id": item[0],
-                "product_id": item[1],
-                "product_name": item[2],
-                "product_name_official": item[2],
-                "category": item[3],
-                "category_type": item[3],
+                "inventory_id": item[3] if item[3] is not None else item[0],
+                "product_id": item[0],
+                "product_name": item[1],
+                "product_name_official": item[1],
+                "category": item[2],
+                "category_type": item[2],
                 "batch_number": item[4],
                 # Dates need to be converted to strings for JSON formatting
                 "expiry_date": item[5].strftime('%Y-%m-%d') if item[5] else None,

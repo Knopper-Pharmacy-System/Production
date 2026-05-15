@@ -11,6 +11,8 @@ interface InventoryItem {
   quantity: number;
   price: number;
   gondola: string;
+  category?: string;
+  category_type?: string;
 }
 
 interface SelectedItem {
